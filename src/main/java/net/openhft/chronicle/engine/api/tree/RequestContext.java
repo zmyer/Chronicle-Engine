@@ -24,15 +24,18 @@ import net.openhft.chronicle.core.pool.ClassLookup;
 import net.openhft.chronicle.engine.HeartbeatHandler;
 import net.openhft.chronicle.engine.api.collection.ValuesCollection;
 import net.openhft.chronicle.engine.api.column.ColumnView;
+import net.openhft.chronicle.engine.api.column.VaadinChart;
 import net.openhft.chronicle.engine.api.map.MapEvent;
 import net.openhft.chronicle.engine.api.map.MapView;
 import net.openhft.chronicle.engine.api.pubsub.*;
 import net.openhft.chronicle.engine.api.session.Heartbeat;
 import net.openhft.chronicle.engine.api.set.EntrySetView;
 import net.openhft.chronicle.engine.api.set.KeySetView;
-import net.openhft.chronicle.engine.cfg.EngineClusterContext;
-import net.openhft.chronicle.engine.cfg.VanillaWireOutPublisherFactory;
+import net.openhft.chronicle.engine.cfg.*;
+import net.openhft.chronicle.engine.fs.ChronicleMapGroupFS;
 import net.openhft.chronicle.engine.fs.EngineConnectionManager;
+import net.openhft.chronicle.engine.map.AuthenticatedKeyValueStore;
+import net.openhft.chronicle.engine.map.ObjectKeyValueStore;
 import net.openhft.chronicle.engine.map.ObjectSubscription;
 import net.openhft.chronicle.engine.map.RawKVSSubscription;
 import net.openhft.chronicle.engine.query.Filter;
@@ -63,7 +66,10 @@ public class RequestContext implements Cloneable {
     public static final ClassLookup CLASS_ALIASES = ClassLookup.create();
 
     static {
-        addAliasLocal(ColumnView.class, "Column");
+
+        loadDefaultAliases();
+        addAliasLocal(VaadinChart.class, "Chart");
+        addAliasLocal(ColumnView.class, "COLUMN");
         addAliasLocal(QueueView.class, "Queue");
         addAliasLocal(MapView.class, "Map");
         addAlias(MapEvent.class, "MapEvent");
@@ -98,11 +104,27 @@ public class RequestContext implements Cloneable {
         addAlias(MapReplicationHandler.class, "MapReplicationHandler");
         addAlias(HeartbeatHandler.class, "HeartbeatHandler");
         addAlias("software.chronicle.enterprise.queue.QueueSourceReplicationHandler");
-        addAlias("software.chronicle.enterprise.queue.QueueSyncReplicationHandler");
-        addAlias(QueueView.class,"QueueView");
-        addAlias(MapView.class,"MapView");
-        addAlias(Boolean.class,"boolean");
+        addAlias("software.chronicle.ente§rprise.queue.QueueSyncReplicationHandler");
+        addAlias(QueueView.class, "QueueView");
+        addAlias(MapView.class, "MapView");
+        addAlias(Boolean.class, "boolean");
+        addAlias(AuthenticatedKeyValueStore.class, "AuthenticatedKeyValueStore");
+        addAlias(ObjectKeyValueStore.class, "ObjectKeyValueStore");
 
+    }
+
+    public static boolean loadDefaultAliases() {
+
+        ClassAliasPool.CLASS_ALIASES.addAlias(ChronicleMapGroupFS.class,
+                EngineCfg.class,
+                JmxCfg.class,
+                ServerCfg.class,
+                ClustersCfg.class,
+                InMemoryMapCfg.class,
+                FilePerKeyMapCfg.class,
+                ChronicleMapCfg.class,
+                MonitorCfg.class);
+        return true;
     }
 
     private String pathName;

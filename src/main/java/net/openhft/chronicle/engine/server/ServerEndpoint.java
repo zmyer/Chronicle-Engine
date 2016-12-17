@@ -71,19 +71,35 @@ public class ServerEndpoint implements Closeable {
                           @NotNull AssetTree assetTree) throws IOException {
         this(hostPortDescription, assetTree, new NetworkStatsListener() {
 
+            @Override
+            public void close() {
+                LOG.info(" host=" + host + ", port=" + port + ", isConnected=false");
+            }
+
             private String host;
             private long port;
 
             @Override
-            public void onNetworkStats(long writeBps, long readBps, long socketPollCountPerSecond, @NotNull NetworkContext networkContext, boolean connectionStatus) {
+            public void networkContext(NetworkContext networkContext) {
+
+            }
+
+            @Override
+            public void onNetworkStats(long writeBps, long readBps, long socketPollCountPerSecond) {
                 LOG.info("writeKBps=" + writeBps / 1000 + ", readKBps=" + readBps / 1000 +
-                        ", socketPollCountPerSecond=" + socketPollCountPerSecond / 1000 + "K, host=" + host + ", port=" + port);
+                        ", socketPollCountPerSecond=" + socketPollCountPerSecond / 1000 + "K, " +
+                        "host=" + host + ", port=" + port + ", isConnected=true");
             }
 
             @Override
             public void onHostPort(String hostName, int port) {
                 host = hostName;
                 this.port = port;
+            }
+
+            @Override
+            public void onRoundTripLatency(long nanosecondLatency) {
+
             }
         });
     }
@@ -102,18 +118,6 @@ public class ServerEndpoint implements Closeable {
 
         final EventLoop eventLoop = assetTree.root().findOrCreateView(EventLoop.class);
         assert eventLoop != null;
-
-/*
-        if (networkStatsListener != null) {
-            if (sc.socket() != null && sc.socket().getRemoteSocketAddress()
-                    instanceof InetSocketAddress)
-                networkStatsListener.onHostPort(
-                        ((InetSocketAddress) sc.socket().getRemoteSocketAddress()).getHostName(),
-                        ((InetSocketAddress) sc.socket().getRemoteSocketAddress()).getPort());
-        }
-*/
-
-
 
         Function<NetworkContext, TcpEventHandler> networkContextTcpEventHandlerFunction = (networkContext) -> {
             final EngineWireNetworkContext nc = (EngineWireNetworkContext) networkContext;
@@ -159,6 +163,7 @@ public class ServerEndpoint implements Closeable {
                                                           final NetworkStatsListener networkStatsListener) {
         final EngineWireNetworkContext nc = new EngineWireNetworkContext(assetTree.root());
         nc.networkStatsListener(networkStatsListener);
+        networkStatsListener.networkContext(nc);
         return nc;
     }
 

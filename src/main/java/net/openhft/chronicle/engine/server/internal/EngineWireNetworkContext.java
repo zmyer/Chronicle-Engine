@@ -17,11 +17,9 @@
 
 package net.openhft.chronicle.engine.server.internal;
 
-import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.annotation.UsedViaReflection;
 import net.openhft.chronicle.engine.api.map.MapView;
 import net.openhft.chronicle.engine.api.tree.Asset;
-import net.openhft.chronicle.engine.api.tree.RequestContext;
 import net.openhft.chronicle.engine.cfg.EngineClusterContext;
 import net.openhft.chronicle.engine.tree.VanillaAsset;
 import net.openhft.chronicle.network.*;
@@ -36,7 +34,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
 
-import static net.openhft.chronicle.engine.api.tree.RequestContext.requestContext;
 import static net.openhft.chronicle.engine.server.internal.EngineWireNetworkContext.ConnectionStatus.CONNECTED;
 import static net.openhft.chronicle.engine.server.internal.EngineWireNetworkContext.ConnectionStatus.DISCONNECTED;
 
@@ -47,9 +44,13 @@ public class EngineWireNetworkContext<T extends EngineWireNetworkContext>
         extends VanillaNetworkContext<T> {
 
     static final Logger LOG = LoggerFactory.getLogger(EngineWireNetworkContext.class);
+    private static final String PROC_CONNECTIONS_CLUSTER = "/proc/connections/cluster/";
+    private static final String CONNECTIVITY_URI = PROC_CONNECTIONS_CLUSTER + "connectivity";
+    private static final String CONNECTIVITY_HOSTS_URI = PROC_CONNECTIONS_CLUSTER + "hosts";
 
     private Asset rootAsset;
-    private MapView<ConnectionDetails, String> hostByConnectionStatus;
+    private MapView<ConnectionDetails, ConnectionEvent> hostByConnectionStatus;
+    private MapView<String, ConnectionStatus> connectivityHosts;
     private TcpHandler handler;
 
     public TcpHandler handler() {
@@ -62,21 +63,15 @@ public class EngineWireNetworkContext<T extends EngineWireNetworkContext>
         serverThreadingStrategy(ServerThreadingStrategy.CONCURRENT);
         ((VanillaAsset) rootAsset.acquireAsset("/proc")).configMapServer();
 
-        try {
-            {
-                String path = "/proc/connections/cluster/connectivity";
-                RequestContext requestContext = requestContext(path).
-                        type(ConnectionDetails.class).
-                        type2(String.class); // todo change to ConnectionStatus but for cMap2 it cant be an enum
-                hostByConnectionStatus = rootAsset.root().acquireAsset(path)
-                        .acquireView(MapView.class, requestContext);
-            }
+        hostByConnectionStatus = rootAsset.root().acquireMap(
+                CONNECTIVITY_URI,
+                ConnectionDetails.class,
+                ConnectionEvent.class);
 
-        } catch (Exception e) {
-            if (Jvm.isDebug())
-                Jvm.debug().on(getClass(), e);
-            throw e;
-        }
+        connectivityHosts = rootAsset.root().acquireMap(
+                CONNECTIVITY_HOSTS_URI,
+                String.class,
+                ConnectionStatus.class);
     }
 
     @NotNull
@@ -95,18 +90,53 @@ public class EngineWireNetworkContext<T extends EngineWireNetworkContext>
         return new ConnectionListener() {
 
             @Override
-            public void onConnected(int localIdentifier, int remoteIdentifier) {
-                ConnectionDetails key = new ConnectionDetails(localIdentifier, remoteIdentifier);
-                hostByConnectionStatus.put(key, CONNECTED.toString());
+            public void onConnected(int localIdentifier, int remoteIdentifier, boolean isAcceptor) {
+                ConnectionDetails key = new ConnectionDetails(localIdentifier, remoteIdentifier, isAcceptor);
+                hostByConnectionStatus.put(key, new ConnectionEvent(CONNECTED));
                 LOG.info(key + ", connectionStatus=" + CONNECTED);
+
+                onConnectionChanged(localIdentifier, remoteIdentifier, isAcceptor);
             }
 
             @Override
-            public void onDisconnected(int localIdentifier, int remoteIdentifier) {
-                ConnectionDetails key = new ConnectionDetails(localIdentifier, remoteIdentifier);
-                hostByConnectionStatus.put(key, DISCONNECTED.toString());
+            public void onDisconnected(int localIdentifier, int remoteIdentifier, boolean isAcceptor) {
+                ConnectionDetails key = new ConnectionDetails(localIdentifier, remoteIdentifier, isAcceptor);
+                hostByConnectionStatus.put(key, new ConnectionEvent(DISCONNECTED));
                 LOG.info(key + ", connectionStatus=" + DISCONNECTED);
+                onConnectionChanged(localIdentifier, remoteIdentifier, isAcceptor);
+
             }
+
+            private void onConnectionChanged(int localIdentifier, int remoteIdentifier, boolean isAcceptor) {
+                ConnectionDetails k1a = new ConnectionDetails(localIdentifier,
+                        remoteIdentifier, isAcceptor);
+                ConnectionDetails k1b = new ConnectionDetails(remoteIdentifier,
+                        localIdentifier, !isAcceptor);
+
+                ConnectionDetails k2a = new ConnectionDetails(localIdentifier,
+                        remoteIdentifier, !isAcceptor);
+                ConnectionDetails k2b = new ConnectionDetails(remoteIdentifier,
+                        localIdentifier, isAcceptor);
+
+                ConnectionStatus connectionStatus = DISCONNECTED;
+                if ((get(k1a) == CONNECTED && get(k1b) == CONNECTED) ||
+                        (get(k2a) == CONNECTED && get(k2b) == CONNECTED)) {
+                    connectionStatus = CONNECTED;
+                }
+
+                connectivityHosts.put("" + localIdentifier + "<->" + remoteIdentifier,
+                        connectionStatus);
+
+            }
+
+            private ConnectionStatus get(ConnectionDetails connectionDetails) {
+                ConnectionEvent connectionEvent = hostByConnectionStatus.get(connectionDetails);
+                if (connectionEvent == null)
+                    return DISCONNECTED;
+                return connectionEvent.connectionStatus;
+            }
+
+
         };
 
     }
@@ -116,17 +146,33 @@ public class EngineWireNetworkContext<T extends EngineWireNetworkContext>
         return "hostByConnectionStatus=" + hostByConnectionStatus.entrySet().toString();
     }
 
-    public enum ConnectionStatus {
+    enum ConnectionStatus implements Serializable {
         CONNECTED, DISCONNECTED
     }
 
-    public static class ConnectionDetails extends AbstractMarshallable implements Serializable {
-        int localIdentifier;
-        int remoteIdentifier;
+    private static class ConnectionEvent extends AbstractMarshallable implements Serializable {
 
-        ConnectionDetails(int localIdentifier, int remoteIdentifier) {
+        // has to be a string as enums wont go in the chronicle map
+        public ConnectionStatus connectionStatus;
+
+        public long timeStamp;
+
+        ConnectionEvent(ConnectionStatus connectionStatus) {
+            this.connectionStatus = connectionStatus;
+            this.timeStamp = System.currentTimeMillis();
+        }
+
+    }
+
+    public static class ConnectionDetails extends AbstractMarshallable implements Serializable {
+        public int localIdentifier;
+        public int remoteIdentifier;
+        public boolean isAcceptor;
+
+        ConnectionDetails(int localIdentifier, int remoteIdentifier, boolean isAcceptor) {
             this.localIdentifier = localIdentifier;
             this.remoteIdentifier = remoteIdentifier;
+            this.isAcceptor = isAcceptor;
         }
 
         public int localIdentifier() {
@@ -139,7 +185,7 @@ public class EngineWireNetworkContext<T extends EngineWireNetworkContext>
 
         @Override
         public String toString() {
-            return "localId=" + localIdentifier + ", remoteId=" + remoteIdentifier;
+            return "localId=" + localIdentifier + ", remoteId=" + remoteIdentifier + ", isAcceptor=" + isAcceptor;
         }
     }
 

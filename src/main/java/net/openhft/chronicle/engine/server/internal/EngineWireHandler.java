@@ -29,6 +29,7 @@ import net.openhft.chronicle.engine.api.session.Heartbeat;
 import net.openhft.chronicle.engine.api.set.EntrySetView;
 import net.openhft.chronicle.engine.api.set.KeySetView;
 import net.openhft.chronicle.engine.api.tree.Asset;
+import net.openhft.chronicle.engine.api.tree.AssetNotFoundException;
 import net.openhft.chronicle.engine.api.tree.RequestContext;
 import net.openhft.chronicle.engine.api.tree.RequestContextInterner;
 import net.openhft.chronicle.engine.cfg.UserStat;
@@ -98,6 +99,8 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
     @NotNull
     private final ReplicationHandler replicationHandler;
     @NotNull
+    private final VaadinChartHandler barChatHandler;
+    @NotNull
     private final ReadMarshallable metaDataConsumer;
     private final StringBuilder lastCsp = new StringBuilder();
     private final StringBuilder eventName = new StringBuilder();
@@ -138,12 +141,31 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
     private long cid;
 
     private HostIdentifier hostIdentifier;
+    private final Class[] views = {MapView.class
+            , EntrySetView.class
+            , ValuesCollection.class
+            , KeySetView.class
+            , ObjectSubscription.class
+            , TopicPublisher.class
+            , Publisher.class
+            , Reference.class
+            , TopologySubscription.class
+            , Replication.class
+            , QueueView.class
+            , Heartbeat.class
+            , IndexQueueView.class
+            , MapColumnView.class
+            , QueueColumnView.class
+            , ColumnView.class
+            , ColumnViewIterator.class
+            , VaadinChart.class};
+
 
     public EngineWireHandler() {
         this.mapWireHandler = new MapWireHandler<>(this);
         this.metaDataConsumer = metaDataConsumer();
         this.keySetHandler = new CollectionWireHandler();
-        this.entrySetHandler = new CollectionWireHandler();
+        this.entrySetHandler = new CollectionWireHandler<>();
         this.valuesHandler = new CollectionWireHandler();
         this.subscriptionHandler = new ObjectKVSubscriptionHandler();
         this.topologySubscriptionHandler = new TopologySubscriptionHandler();
@@ -152,9 +174,10 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
         this.referenceHandler = new ReferenceHandler();
         this.replicationHandler = new ReplicationHandler();
         this.systemHandler = new SystemHandler();
-        this.indexQueueViewHandler = new IndexQueueViewHandler();
+        this.indexQueueViewHandler = new IndexQueueViewHandler<>();
         this.columnViewHandler = new ColumnViewHandler(this);
         this.columnViewIteratorHandler = new ColumnViewIteratorHandler(this);
+        this.barChatHandler = new VaadinChartHandler(this);
     }
 
     @Override
@@ -236,27 +259,18 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
                             return;
                         }
 
-                        if (viewType != ColumnViewIterator.class) {
+                        if (viewType == ColumnView.class) {
+                            try {
+                                view = contextAsset.acquireView(QueueColumnView.class);
+                            } catch (AssetNotFoundException e) {
+                                view = contextAsset.acquireView(MapColumnView.class);
+                            }
+                        } else if (viewType != ColumnViewIterator.class) {
                             view = contextAsset.acquireView(requestContext);
                         } else
                             view = cidToObject.get(cid);
 
-                        if (viewType == MapView.class ||
-                                viewType == EntrySetView.class ||
-                                viewType == ValuesCollection.class ||
-                                viewType == KeySetView.class ||
-                                viewType == ObjectSubscription.class ||
-                                viewType == TopicPublisher.class ||
-                                viewType == Publisher.class ||
-                                viewType == Reference.class ||
-                                viewType == TopologySubscription.class ||
-                                viewType == Replication.class ||
-                                viewType == QueueView.class ||
-                                viewType == Heartbeat.class ||
-                                viewType == IndexQueueView.class ||
-                                viewType == MapColumnView.class ||
-                                viewType == QueueColumnView.class ||
-                                viewType == ColumnViewIterator.class) {
+                        if (isValid(viewType)) {
 
                             // default to string type if not provided
                             final Class<?> type = requestContext.keyType() == null ? String.class
@@ -281,7 +295,17 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
             } finally {
                 assert outWire.endUse();
             }
-        };
+        }
+
+                ;
+    }
+
+    private boolean isValid(Class viewType) {
+        for (Class v : views) {
+            if (v.isAssignableFrom(viewType))
+                return true;
+        }
+        return false;
     }
 
     private boolean hasCspChanged(@NotNull final StringBuilder cspText) {
@@ -377,27 +401,31 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
 
                 if (wireAdapter != null) {
 
-                    if (viewType == MapView.class) {
+                    if (viewType == null)
+                        return;
+
+                    if (MapView.class.isAssignableFrom(viewType)) {
                         mapWireHandler.process(in, out, (MapView) view, tid, wireAdapter,
                                 requestContext);
                         return;
                     }
 
-                    if (viewType == EntrySetView.class) {
+                    if (EntrySetView.class.isAssignableFrom(viewType)) {
                         entrySetHandler.process(in, out, (EntrySetView) view,
                                 wireAdapter.entryToWire(),
                                 wireAdapter.wireToEntry(), HashSet::new, tid);
                         return;
                     }
 
-                    if (viewType == KeySetView.class) {
+                    if (KeySetView.class.isAssignableFrom(viewType)) {
                         keySetHandler.process(in, out, (KeySetView) view,
                                 wireAdapter.keyToWire(),
                                 wireAdapter.wireToKey(), HashSet::new, tid);
                         return;
                     }
 
-                    if (viewType == MapColumnView.class || viewType == QueueColumnView.class) {
+                    if (MapColumnView.class.isAssignableFrom(viewType) || QueueColumnView.class.isAssignableFrom(viewType) ||
+                            viewType == ColumnView.class) {
                         columnViewHandler.process(in, out, (ColumnViewInternal) view, tid);
                         return;
                     }
@@ -407,48 +435,48 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
                         return;
                     }
 
-                    if (viewType == ValuesCollection.class) {
+                    if (ValuesCollection.class.isAssignableFrom(viewType)) {
                         valuesHandler.process(in, out, (ValuesCollection) view,
                                 wireAdapter.keyToWire(),
                                 wireAdapter.wireToKey(), ArrayList::new, tid);
                         return;
                     }
 
-                    if (viewType == ObjectSubscription.class) {
+                    if (ObjectSubscription.class.isAssignableFrom(viewType)) {
                         subscriptionHandler.process(in,
                                 requestContext, publisher(), contextAsset, tid,
                                 outWire, (SubscriptionCollection) view);
                         return;
                     }
 
-                    if (viewType == TopologySubscription.class) {
+                    if (TopologySubscription.class.isAssignableFrom(viewType)) {
                         topologySubscriptionHandler.process(in,
                                 requestContext, publisher(), contextAsset, tid,
                                 outWire, (TopologySubscription) view);
                         return;
                     }
 
-                    if (viewType == Reference.class) {
+                    if (Reference.class.isAssignableFrom(viewType)) {
                         referenceHandler.process(in, requestContext,
                                 publisher(), tid,
                                 (Reference) view, cspText, outWire, wireAdapter);
                         return;
                     }
 
-                    if (viewType == TopicPublisher.class || viewType == QueueView.class) {
+                    if (TopicPublisher.class.isAssignableFrom(viewType) || QueueView.class.isAssignableFrom(viewType)) {
                         topicPublisherHandler.process(in, publisher(), tid, outWire,
                                 (TopicPublisher) view, wireAdapter);
                         return;
                     }
 
-                    if (viewType == Publisher.class) {
+                    if (Publisher.class.isAssignableFrom(viewType)) {
                         publisherHandler.process(in, requestContext,
                                 publisher(), tid,
                                 (Publisher) view, outWire, wireAdapter);
                         return;
                     }
 
-                    if (viewType == Replication.class) {
+                    if (Replication.class.isAssignableFrom(viewType)) {
                         replicationHandler.process(in,
                                 publisher(), tid, outWire,
                                 hostIdentifier,
@@ -457,15 +485,22 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
                         return;
                     }
 
-                    if (viewType == IndexQueueView.class) {
+                    if (IndexQueueView.class.isAssignableFrom(viewType)) {
                         indexQueueViewHandler.process(in, requestContext, contextAsset,
                                 publisher(), tid,
                                 outWire);
+                        return;
+                    }
+
+                    if (VaadinChart.class.isAssignableFrom(viewType)) {
+                        barChatHandler.process(in, out, (VaadinChart) view, tid);
                     }
                 }
 
             } catch (Exception e) {
-                Jvm.warn().on(getClass(), e);
+
+                Jvm.warn().on(getClass(), in.readingPeekYaml() + "/n" + in.bytes().toDebugString(),
+                        e);
 
             } finally {
                 if (sessionProvider != null)

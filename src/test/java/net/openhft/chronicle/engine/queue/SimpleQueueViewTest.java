@@ -33,7 +33,6 @@ import net.openhft.chronicle.engine.tree.VanillaAssetTree;
 import net.openhft.chronicle.network.TCPRegistry;
 import net.openhft.chronicle.network.connection.TcpChannelHub;
 import net.openhft.chronicle.wire.WireType;
-import net.openhft.chronicle.wire.YamlLogging;
 import org.jetbrains.annotations.NotNull;
 import org.junit.*;
 import org.junit.rules.TestName;
@@ -138,7 +137,7 @@ public class SimpleQueueViewTest extends ThreadMonitoringTest {
 
     @Test
     public void testStringTopicPublisherWithSubscribe() throws InterruptedException {
-        YamlLogging.setAll(true);
+        //YamlLogging.setAll(true);
         String uri = "/queue/" + methodName;
         String messageType = "topic";
 
@@ -201,20 +200,18 @@ public class SimpleQueueViewTest extends ThreadMonitoringTest {
 
     @Test
     public void testStringPublishToAKeyTopic() throws InterruptedException {
-        Publisher<String> publisher = null;
+        Publisher<String> publisher;
 
-        YamlLogging.setAll(true);
-        String uri = "/queue/" + methodName + "/key" + DELETE_CHRONICLE_FILE;
+        //YamlLogging.setAll(true);
+        String uri = "/queue/" + methodName + System.nanoTime() + "/key" + DELETE_CHRONICLE_FILE;
         publisher = assetTree.acquirePublisher(uri, String.class);
-        BlockingQueue<String> values = new ArrayBlockingQueue<>(1);
+        BlockingQueue<String> values = new ArrayBlockingQueue<>(2);
         Subscriber<String> subscriber = values::add;
         assetTree.registerSubscriber(uri, String.class, subscriber);
-        Jvm.pause(500);
         publisher.publish("Message-1");
         assertEquals("Message-1", values.poll(2, SECONDS));
         publisher.publish("Message-2");
-        assertEquals("Message-2", values.poll(2, SECONDS));
-        Jvm.pause(100);
+        assertEquals("Message-2", values.poll(5, SECONDS));
         assertEquals("[]", values.toString());
     }
 
@@ -257,7 +254,7 @@ public class SimpleQueueViewTest extends ThreadMonitoringTest {
     @Test
     @Ignore("TODO FIX Too many results")
     public void testStringPublishWithTopicSubscribe() throws InterruptedException {
-        YamlLogging.showClientReads(true);
+//        YamlLogging.showClientReads(true);
         Publisher<String> publisher = null;
         String uri = "/queue/" + methodName + DELETE_CHRONICLE_FILE;
         String messageType = "topic";

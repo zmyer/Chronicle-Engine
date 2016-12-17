@@ -18,6 +18,11 @@
 package net.openhft.chronicle.engine.server.internal;
 
 import net.openhft.chronicle.core.annotation.UsedViaReflection;
+import net.openhft.chronicle.core.util.Histogram;
+import net.openhft.chronicle.engine.api.column.ChartProperties;
+import net.openhft.chronicle.engine.api.column.ColumnViewInternal;
+import net.openhft.chronicle.engine.api.column.VaadinChartSeries;
+import net.openhft.chronicle.engine.api.column.VanillaVaadinChart;
 import net.openhft.chronicle.engine.api.tree.Asset;
 import net.openhft.chronicle.engine.api.tree.RequestContext;
 import net.openhft.chronicle.engine.cfg.EngineClusterContext;
@@ -36,6 +41,11 @@ import net.openhft.chronicle.wire.Demarshallable;
 import net.openhft.chronicle.wire.WireIn;
 import org.jetbrains.annotations.NotNull;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.function.Function;
+
+import static net.openhft.chronicle.engine.api.column.VaadinChartSeries.Type.SPLINE;
 import static net.openhft.chronicle.engine.api.tree.RequestContext.requestContext;
 
 /**
@@ -43,13 +53,23 @@ import static net.openhft.chronicle.engine.api.tree.RequestContext.requestContex
  */
 public class EngineNetworkStatsListener implements NetworkStatsListener<EngineWireNetworkContext> {
 
+    public static final String PROC_CONNECTIONS_CLUSTER_THROUGHPUT = "/proc/connections/cluster/throughput/";
     private final Asset asset;
     private final int localIdentifier;
     private final WireNetworkStats wireNetworkStats = new WireNetworkStats();
     private QueueView qv;
+    private volatile boolean isClosed;
+    private EngineWireNetworkContext nc;
+    private Histogram histogram = null;
+
+
+    static {
+        RequestContext.loadDefaultAliases();
+    }
 
     public EngineNetworkStatsListener(Asset asset, int localIdentifier) {
         this.localIdentifier = localIdentifier;
+        wireNetworkStats.localIdentifier(localIdentifier);
         this.asset = asset;
     }
 
@@ -57,7 +77,7 @@ public class EngineNetworkStatsListener implements NetworkStatsListener<EngineWi
 
         if (qv != null)
             return qv;
-        String path = "/proc/connections/cluster/throughput/" + localIdentifier;
+        String path = PROC_CONNECTIONS_CLUSTER_THROUGHPUT + localIdentifier;
 
         RequestContext requestContext = requestContext(path)
                 .elementType(NetworkStats.class);
@@ -82,16 +102,37 @@ public class EngineNetworkStatsListener implements NetworkStatsListener<EngineWi
     }
 
     @Override
+    public void networkContext(@NotNull EngineWireNetworkContext nc) {
+        this.nc = nc;
+    }
+
+    @Override
     public void onNetworkStats(long writeBps, long readBps,
-                               long socketPollCountPerSecond,
-                               @NotNull EngineWireNetworkContext nc,
-                               boolean isConnected) {
+                               long socketPollCountPerSecond) {
+        if (isClosed)
+            return;
+
         wireNetworkStats.writeBps(writeBps);
         wireNetworkStats.readBps(readBps);
         wireNetworkStats.socketPollCountPerSecond(socketPollCountPerSecond);
         wireNetworkStats.timestamp(System.currentTimeMillis());
-        wireNetworkStats.isConnected(isConnected);
+        wireNetworkStats.isConnected(!nc.isClosed());
 
+        if (histogram != null) {
+            wireNetworkStats.percentile50th((int) (histogram.percentile(0.5) / 1_000));
+            wireNetworkStats.percentile90th((int) (histogram.percentile(0.9) / 1_000));
+            wireNetworkStats.percentile99th((int) (histogram.percentile(0.99) / 1_000));
+            wireNetworkStats.percentile99_9th((int) (histogram.percentile(0.999) / 1_000));
+
+            histogram.reset();
+        }
+
+        publish();
+
+    }
+
+    private void nc(@NotNull EngineWireNetworkContext nc) {
+        wireNetworkStats.isAcceptor(nc.isAcceptor());
         if (nc.handler() instanceof AbstractSubHandler) {
             final int remoteIdentifier = ((AbstractSubHandler) nc.handler()).remoteIdentifier();
             wireNetworkStats.remoteIdentifier(remoteIdentifier);
@@ -100,6 +141,8 @@ public class EngineNetworkStatsListener implements NetworkStatsListener<EngineWi
             final UberHandler handler = (UberHandler) nc.handler();
             wireNetworkStats.remoteIdentifier(handler.remoteIdentifier());
             wireNetworkStats.wireType(handler.wireType());
+        } else {
+            wireNetworkStats.remoteIdentifier(0);
         }
 
         final SessionDetailsProvider sessionDetailsProvider = nc.sessionDetails();
@@ -108,16 +151,98 @@ public class EngineNetworkStatsListener implements NetworkStatsListener<EngineWi
             wireNetworkStats.userId(sessionDetailsProvider.userId());
             wireNetworkStats.wireType(sessionDetailsProvider.wireType());
         }
-        wireNetworkStats.localIdentifier(localIdentifier);
-
-        acquireQV().publishAndIndex("", wireNetworkStats);
-
     }
 
     @Override
     public void onHostPort(String hostName, int port) {
         wireNetworkStats.remoteHostName(hostName);
         wireNetworkStats.remotePort(port);
+        wireNetworkStats.timestamp(System.currentTimeMillis());
+        if (isClosed)
+            return;
+        publish();
+    }
+
+    @Override
+    public void onRoundTripLatency(long nanosecondLatency) {
+        acquireHistogram().sampleNanos(nanosecondLatency);
+    }
+
+    private Histogram acquireHistogram() {
+        if (histogram != null)
+            return histogram;
+
+        histogram = new Histogram();
+        createVaadinChart();
+        return histogram;
+    }
+
+    private static ThreadLocal<SimpleDateFormat> HH_MM_SS = ThreadLocal.withInitial(() -> new
+            SimpleDateFormat
+            ("HH:mm.ss"));
+
+
+    @SuppressWarnings("WeakerAccess")
+    public enum HourMinSecRenderer implements Function<Object, String> {
+
+        INSTANCE;
+
+        @Override
+        public String apply(Object timeMs) {
+            return HH_MM_SS.get().format(new Date((Long) timeMs));
+        }
+    }
+
+    private void createVaadinChart() {
+
+        final String csp = PROC_CONNECTIONS_CLUSTER_THROUGHPUT + "replication-latency/" +
+                localIdentifier
+                + "<->" + wireNetworkStats.remoteIdentifier();
+
+        final VanillaVaadinChart barChart = asset.acquireView(requestContext(csp).view("Chart"));
+        barChart.columnNameField("timestamp");
+        VaadinChartSeries percentile50th = new VaadinChartSeries("percentile50th").type(SPLINE).yAxisLabel
+                ("microseconds");
+        VaadinChartSeries percentile90th = new VaadinChartSeries("percentile90th").type(SPLINE).yAxisLabel
+                ("microseconds");
+        VaadinChartSeries percentile99th = new VaadinChartSeries("percentile99th").type(SPLINE).yAxisLabel(
+                "microseconds");
+        VaadinChartSeries percentile99_9th = new VaadinChartSeries("percentile99_9th").type(SPLINE)
+                .yAxisLabel("microseconds");
+
+        barChart.series(percentile50th, percentile90th, percentile99th, percentile99_9th);
+
+        final ChartProperties chartProperties = new ChartProperties();
+        chartProperties.title = "Round Trip Network Latency Distribution";
+        chartProperties.menuLabel = "round trip latency";
+        chartProperties.countFromEnd = 30;
+        chartProperties.xAxisLabelRender = HourMinSecRenderer.INSTANCE;
+        barChart.chartProperties(chartProperties);
+        barChart.dataSource(qv);
+        chartProperties.filter = new ColumnViewInternal.MarshableFilter("percentile99_9th", ">0");
+    }
+
+    @Override
+    public void close() {
+        if (isClosed)
+            return;
+        isClosed = true;
+        wireNetworkStats.writeBps(0);
+        wireNetworkStats.readBps(0);
+        wireNetworkStats.socketPollCountPerSecond(0);
+        wireNetworkStats.timestamp(System.currentTimeMillis());
+        wireNetworkStats.isConnected(false);
+        publish();
+    }
+
+    private void publish() {
+        nc(nc);
+        acquireQV().publishAndIndex("", wireNetworkStats);
+    }
+
+    @Override
+    public boolean isClosed() {
+        return isClosed;
     }
 
     public static class Factory implements

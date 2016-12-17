@@ -36,14 +36,13 @@ import net.openhft.chronicle.network.cluster.HostIdConnectionStrategy;
 import net.openhft.chronicle.network.connection.VanillaWireOutPublisher;
 import net.openhft.chronicle.wire.WireIn;
 import net.openhft.chronicle.wire.WireType;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.nio.channels.SocketChannel;
 import java.util.function.Function;
+
+import static net.openhft.chronicle.network.NetworkStatsListener.notifyHostPort;
 
 /**
  * @author Rob Austin.
@@ -64,27 +63,46 @@ public class EngineClusterContext extends ClusterContext {
 
     private NetworkStatsListener defaultNetworkStatsListener = new NetworkStatsListener() {
 
+        @Override
+        public void close() {
+            LOG.info("writeKBps=0" +
+                    ", readKBps=0" +
+                    ", socketPollCountPerSecond=0" +
+                    ", host=" + host +
+                    ", port=" + port +
+                    ", isConnected=false");
+        }
+
         String host;
         long port;
 
         @Override
+        public void networkContext(NetworkContext networkContext) {
+
+        }
+
+        @Override
         public void onNetworkStats(long writeBps,
                                    long readBps,
-                                   long socketPollCountPerSecond,
-                                   @NotNull NetworkContext networkContext,
-                                   boolean connectionStatus) {
+                                   long socketPollCountPerSecond) {
 
             LOG.info("writeKBps=" + writeBps / 1000 +
                     ", readKBps=" + readBps / 1000 +
                     ", socketPollCountPerSecond=" + socketPollCountPerSecond +
                     ", host=" + host +
-                    ", port=" + port);
+                    ", port=" + port +
+                    ", isConnected=true");
         }
 
         @Override
         public void onHostPort(String hostName, int port) {
             host = hostName;
             this.port = port;
+        }
+
+        @Override
+        public void onRoundTripLatency(long nanosecondLatency) {
+
         }
     };
 
@@ -120,7 +138,10 @@ public class EngineClusterContext extends ClusterContext {
             if (nc.networkStatsListener() == null)
                 nc.networkStatsListener(defaultNetworkStatsListener);
 
-            notifyHostPort(nc.socketChannel(), nc.networkStatsListener());
+
+            final NetworkStatsListener nl = nc.networkStatsListener();
+            if (nl != null)
+                notifyHostPort(nc.socketChannel(), nl);
 
             final Function<EngineWireNetworkContext, TcpHandler> f
                     = x -> new HeaderTcpHandler<>(handler, consumer, x);
@@ -134,21 +155,6 @@ public class EngineClusterContext extends ClusterContext {
         };
     }
 
-
-    /**
-     * notifies the NetworkStatsListener of the host and port based on the SocketChannel
-     *
-     * @param sc SocketChannel
-     * @param nl NetworkStatsListener
-     */
-    private void notifyHostPort(final SocketChannel sc, final NetworkStatsListener nl) {
-        if (sc != null && sc.socket() != null
-                && sc.socket().getRemoteSocketAddress() instanceof InetSocketAddress) {
-            final InetSocketAddress remoteSocketAddress = (InetSocketAddress) sc.socket()
-                    .getRemoteSocketAddress();
-            nl.onHostPort(remoteSocketAddress.getHostName(), remoteSocketAddress.getPort());
-        }
-    }
 
     public Asset assetRoot() {
         return assetRoot;

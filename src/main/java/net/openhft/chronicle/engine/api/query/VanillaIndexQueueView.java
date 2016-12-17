@@ -44,7 +44,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -59,7 +58,7 @@ public class VanillaIndexQueueView<V extends Marshallable>
 
     private static final Logger LOG = LoggerFactory.getLogger(VanillaIndexQueueView.class);
 
-    private final Function<V, ?> valueToKey;
+
     private final ChronicleQueue chronicleQueue;
     private final Map<String, ConcurrentMap<Object, IndexedValue<V>>> multiMap = new ConcurrentHashMap<>();
     private final Map<Subscriber<IndexedValue<V>>, AtomicBoolean> activeSubscriptions
@@ -80,7 +79,7 @@ public class VanillaIndexQueueView<V extends Marshallable>
                                  @NotNull Asset asset,
                                  @NotNull QueueView<?, V> queueView) {
 
-        valueToKey = asset.findView(ValueToKey.class);
+
         this.asset = asset;
         final EventLoop eventLoop = asset.acquireView(EventLoop.class);
         final ChronicleQueueView chronicleQueueView = (ChronicleQueueView) queueView;
@@ -125,23 +124,40 @@ public class VanillaIndexQueueView<V extends Marshallable>
                 long start = dc.wire().bytes().readPosition();
 
                 try {
-                    while (dc.wire().bytes().readRemaining() > 0) {
+                    for (; ; ) {
+                        dc.wire().consumePadding();
+
+                        if (dc.wire().bytes().readRemaining() == 0)
+                            return true;
+
                         final StringBuilder sb = acquireStringBuilder();
                         final ValueIn read = dc.wire().read(sb);
 
+                        if ("history".contentEquals(sb)) {
+                            read.marshallable(MessageHistory.get());
+                            return true;
+                        }
+
                         if (sb.length() == 0)
                             continue;
-
                         final V v = (V) VanillaObjectCacheFactory.INSTANCE.get()
                                 .apply(typeToString.toType(sb));
-                        read.marshallable(v);
+                        long readPosition = dc.wire().bytes().readPosition();
+                        try {
+                            read.marshallable(v);
+                        } catch (Exception e) {
 
-                        assert v != null;
+                            final String msg = dc.wire().bytes().toHexString(readPosition, dc.wire()
+                                    .bytes()
+                                    .readLimit() - readPosition);
+
+                            LOG.error("Error passing " + v.getClass().getSimpleName() + " bytes:\n"
+                                    + msg, e);
+                            return false;
+                        }
 
                         final Object k;
-                        if (valueToKey != null) {
-                            k = valueToKey.apply(v);
-                        } else if (v instanceof KeyedMarshallable) {
+                        if (v instanceof KeyedMarshallable) {
                             final Bytes bytes = Wires.acquireBytes();
                             ((KeyedMarshallable) v).writeKey(bytes);
                             k = bytesToKey.computeIfAbsent(bytes, Bytes::copy);
@@ -195,12 +211,9 @@ public class VanillaIndexQueueView<V extends Marshallable>
 
         long fromIndex0 = vanillaIndexQuery.fromIndex();
         if (fromIndex0 == -1) {
-
             final RollingChronicleQueue chronicleQueue = (RollingChronicleQueue) this.chronicleQueue;
             final int cycle = chronicleQueue.cycle();
-
             fromIndex0 = chronicleQueue.rollCycle().toIndex(cycle, 0);
-
         } else if (fromIndex0 == 0) {
             fromIndex0 = endIndex;
         }
@@ -211,7 +224,8 @@ public class VanillaIndexQueueView<V extends Marshallable>
         final long fromIndex = fromIndex0;
 
         boolean success = tailer.moveToIndex(fromIndex);
-        assert success;
+        assert success || (fromIndex == endIndex) : "fromIndex=" + Long.toHexString(fromIndex)
+                + ", start=" + Long.toHexString(start) + ",end=" + Long.toHexString(endIndex);
 
         if (fromIndex <= endIndex) {
             registerSubscriber(sub, vanillaIndexQuery, tailer, fromIndex);
@@ -314,8 +328,15 @@ public class VanillaIndexQueueView<V extends Marshallable>
             if (from > dc.index())
                 return null;
 
-            final StringBuilder sb = acquireStringBuilder();
-            while (dc.wire().bytes().readRemaining() > 0) {
+
+            for (; ; ) {
+
+                dc.wire().consumePadding();
+
+                if (dc.wire().bytes().readRemaining() == 0)
+                    break;
+
+                final StringBuilder sb = acquireStringBuilder();
                 final ValueIn valueIn = dc.wire().read(sb);
                 if (!eventName.contentEquals(sb)) {
                     valueIn.skipValue();

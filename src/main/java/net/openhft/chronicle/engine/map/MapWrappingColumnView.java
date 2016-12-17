@@ -19,12 +19,15 @@ import java.util.*;
 import java.util.function.Predicate;
 
 import static net.openhft.chronicle.core.util.ObjectUtils.convertTo;
+import static net.openhft.chronicle.engine.api.column.ColumnViewInternal.DOp.toRange;
 
 /**
  * @author Rob Austin.
  */
 public class MapWrappingColumnView<K, V> implements MapColumnView {
 
+    private final RequestContext requestContext;
+    private final Asset asset;
     private final MapView<K, V> mapView;
     private final boolean valueMarshallable;
     private final boolean valueMap;
@@ -34,6 +37,8 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
     public MapWrappingColumnView(RequestContext requestContext,
                                  Asset asset,
                                  MapView<K, V> mapView) {
+        this.requestContext = requestContext;
+        this.asset = asset;
         this.mapView = mapView;
         valueMarshallable = Marshallable.class.isAssignableFrom(mapView.valueType());
         valueMap = Map.class.isAssignableFrom(mapView.valueType());
@@ -131,18 +136,20 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
             public Row next() {
                 final Map.Entry e = core.next();
                 @NotNull final Row row = new Row(columns());
-                if ((Marshallable.class.isAssignableFrom(mapView.keyType()))) {
-                    row.set("key", e.getKey().toString());
-                } else {
-                    row.set("key", e.getKey());
-                }
+                addColumns(row, mapView.keyType(), "key", e.getKey());
+                addColumns(row, mapView.valueType(), "value", e.getValue());
+                return row;
+            }
 
-                final List<FieldInfo> fieldInfos = Wires.fieldInfos(mapView.valueType());
+            private void addColumns(Row row,
+                                    final Class type,
+                                    final String defaultColumnName,
+                                    final Object item) {
+                final List<FieldInfo> fieldInfos = Wires.fieldInfos(type);
                 if (fieldInfos.isEmpty()) {
-                    row.set("value", e.getValue());
-
+                    row.set(defaultColumnName, item);
                 } else {
-                    @NotNull final Marshallable value = (Marshallable) e.getValue();
+                    @NotNull final Marshallable value = (Marshallable) item;
                     for (@NotNull final FieldInfo info : fieldInfos) {
 //                        System.out.println(info);
                         if (!columnNames().contains(info.name()))
@@ -158,10 +165,9 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
                         }
                     }
                 }
-
-                return row;
             }
         };
+
 
         long x = 0;
         while (x++ < sortedFilter.fromIndex && result.hasNext()) {
@@ -183,24 +189,35 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
         return mapView.asset().getView(ObjectSubscription.class);
     }
 
+    @Override
+    public Asset asset() {
+        return asset;
+    }
+
     @NotNull
     @Override
     public List<Column> columns() {
+
+
         @NotNull List<Column> result = new ArrayList<>();
 
         if ((Marshallable.class.isAssignableFrom(keyType()))) {
-            result.add(new Column("key", true, true, "", String.class, false));
+            for (@NotNull final FieldInfo info : Wires.fieldInfos(keyType())) {
+                result.add(new Column(info.name(), true, true, "", info.type(), true));
+            }
         } else {
-            result.add(new Column("key", false, true, "", keyType(), true));
+            result.add(new Column("key", true, true, "", keyType(), true));
         }
+
+        boolean isReadOnly = requestContext.toUri().startsWith("/proc");
 
         if ((Marshallable.class.isAssignableFrom(valueType()))) {
             //valueType.isAssignableFrom()
             for (@NotNull final FieldInfo info : Wires.fieldInfos(valueType())) {
-                result.add(new Column(info.name(), false, false, "", info.type(), true));
+                result.add(new Column(info.name(), isReadOnly, false, "", info.type(), true));
             }
         } else {
-            result.add(new Column("value", false, false, "", valueType(), true));
+            result.add(new Column("value", isReadOnly, false, "", valueType(), true));
         }
 
         return result;
@@ -218,7 +235,12 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
 
         @NotNull LinkedHashSet<String> result = new LinkedHashSet<>();
 
-        result.add("key");
+        if ((Marshallable.class.isAssignableFrom(keyType()))) {
+            for (@NotNull final FieldInfo fi : Wires.fieldInfos(keyType())) {
+                result.add(fi.name());
+            }
+        } else
+            result.add("key");
 
         if (Marshallable.class.isAssignableFrom(valueType())) {
             for (@NotNull final FieldInfo fi : Wires.fieldInfos(valueType())) {
@@ -238,8 +260,11 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
 
     @Override
     public boolean canDeleteRows() {
+        if (requestContext.toUri().startsWith("/proc"))
+            return false;
         return true;
     }
+
 
     @Override
     public int changedRow(@NotNull Map<String, Object> row, @NotNull Map<String, Object> oldRow) {
@@ -283,7 +308,7 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
     }
 
     @Nullable
-    public Predicate<Map.Entry<K, V>> filter(@NotNull List<MarshableFilter> filters) {
+    private Predicate<Map.Entry<K, V>> filter(@NotNull List<MarshableFilter> filters) {
         return entry -> {
 
             if (filters.isEmpty())
@@ -345,71 +370,6 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
         };
     }
 
-    enum DOp {
-        GE(">=") {
-            @Override
-            boolean compare(double a, double b) {
-                return a >= b;
-            }
-        },
-        LE("<=") {
-            @Override
-            boolean compare(double a, double b) {
-                return a <= b;
-            }
-        },
-        NE("<>", "!=", "!") {
-            @Override
-            boolean compare(double a, double b) {
-                return a != b;
-            }
-        },
-        GT(">") {
-            @Override
-            boolean compare(double a, double b) {
-                return a > b;
-            }
-        },
-        LT("<") {
-            @Override
-            boolean compare(double a, double b) {
-                return a < b;
-            }
-        },
-        EQ("==", "=", "") {
-            @Override
-            boolean compare(double a, double b) {
-                return a == b;
-            }
-        };
-
-        static final DOp[] OPS = values();
-        final String[] op;
-
-        DOp(String... op) {
-            this.op = op;
-        }
-
-        abstract boolean compare(double a, double b);
-    }
-
-    private boolean toRange(@NotNull Number o, @NotNull String trimmed) {
-        for (DOp dop : DOp.OPS) {
-            for (String op : dop.op) {
-                if (trimmed.startsWith(op)) {
-                    @NotNull final String number = trimmed.substring(op.length()).trim();
-
-                    try {
-                        final Number filterNumber = convertTo(o.getClass(), number);
-                        return dop.compare(o.doubleValue(), filterNumber.doubleValue());
-                    } catch (ClassCastException e) {
-                        return false;
-                    }
-                }
-            }
-        }
-        return false;
-    }
 
     /**
      * @param sortedFilter if {@code sortedFilter} == null or empty all the total number of rows is
@@ -417,12 +377,12 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
      * @return the number of rows the matches this query
      */
     @Override
-    public int rowCount(@Nullable List<MarshableFilter> sortedFilter) {
-        if (sortedFilter == null || sortedFilter.isEmpty())
+    public int rowCount(@Nullable SortedFilter sortedFilter) {
+        if (sortedFilter == null || sortedFilter.marshableFilters.isEmpty())
             return (int) mapView.longSize();
 
         return (int) mapView.entrySet().stream()
-                .filter(filter(sortedFilter))
+                .filter(filter(sortedFilter.marshableFilters))
                 .count();
     }
 

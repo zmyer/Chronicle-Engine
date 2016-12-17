@@ -57,7 +57,7 @@ class ColumnViewHandler extends AbstractHandler {
 
                 outWire.writeDocument(true, wire -> outWire.writeEventName(CoreFields.tid).int64(tid));
 
-                writeData(inWire.bytes(), out -> {
+                writeData(inWire, out -> {
 
                     if (columns.contentEquals(eventName)) {
                         outWire.writeEventName(reply).object(columnView.columns());
@@ -65,19 +65,19 @@ class ColumnViewHandler extends AbstractHandler {
                     }
 
                     if (rowCount.contentEquals(eventName)) {
-                        filtersList.clear();
-                        List<ColumnView.MarshableFilter> filters = valueIn.object(filtersList, List.class);
-                        int count = columnView.rowCount(filters == null ? Collections
-                                .emptyList() : filters);
+                        ColumnViewInternal.SortedFilter filters = valueIn.object(ColumnViewInternal.SortedFilter.class);
+                        int count = columnView.rowCount(filters == null ?
+                                new ColumnViewInternal.SortedFilter() : filters);
                         outWire.writeEventName(reply).int32(count);
-
                         return;
                     }
 
                     if (changedRow.contentEquals(eventName)) {
                         valueIn.marshallable(wire -> {
-                            wire.read(rowCount.params()[0]).object(newRow, Map.class);
-                            wire.read(rowCount.params()[1]).object(oldRow, Map.class);
+                            newRow.clear();
+                            oldRow.clear();
+                            wire.read(changedRow.params()[0]).object(newRow, Map.class);
+                            wire.read(changedRow.params()[1]).object(oldRow, Map.class);
                             final int result = columnView.changedRow(newRow, oldRow);
                             outWire.writeEventName(reply).int32(result);
                         });
@@ -111,13 +111,9 @@ class ColumnViewHandler extends AbstractHandler {
                     throw new IllegalStateException("unsupported event=" + eventName);
                 });
 
-            } catch (
-                    Exception e)
-
-            {
+            } catch (Exception e) {
                 Jvm.warn().on(getClass(), e);
             }
-
 
         }
     };
