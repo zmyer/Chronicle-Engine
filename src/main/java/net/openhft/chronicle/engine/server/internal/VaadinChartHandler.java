@@ -7,6 +7,7 @@ import net.openhft.chronicle.engine.api.column.VaadinChart;
 import net.openhft.chronicle.network.connection.CoreFields;
 import net.openhft.chronicle.wire.WireIn;
 import net.openhft.chronicle.wire.WireOut;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.atomic.AtomicLong;
@@ -19,6 +20,7 @@ import static net.openhft.chronicle.network.connection.CoreFields.reply;
  */
 public class VaadinChartHandler extends AbstractHandler {
     private final CspManager cspManager;
+    @NotNull
     AtomicLong nextToken = new AtomicLong();
 
     VaadinChartHandler(CspManager cspManager) {
@@ -42,7 +44,7 @@ public class VaadinChartHandler extends AbstractHandler {
 
             eventName.setLength(0);
             inWire.readEventName(eventName);
-
+            assert startEnforceInValueReadCheck(inWire);
             try {
 
                 outWire.writeDocument(true, wire -> outWire.writeEventName(CoreFields.tid).int64(tid));
@@ -75,6 +77,8 @@ public class VaadinChartHandler extends AbstractHandler {
 
             } catch (Exception e) {
                 Jvm.warn().on(getClass(), e);
+            } finally {
+                assert endEnforceInValueReadCheck(inWire);
             }
 
 
@@ -82,7 +86,7 @@ public class VaadinChartHandler extends AbstractHandler {
     };
 
 
-    public void process(WireIn in, WireOut out, VaadinChart vaadinChart, long tid) {
+    public void process(WireIn in, @NotNull WireOut out, VaadinChart vaadinChart, long tid) {
 
         setOutWire(out);
 

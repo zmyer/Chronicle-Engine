@@ -50,56 +50,60 @@ public class TopologyHandler<E> extends AbstractHandler {
         public void accept(@NotNull final WireIn inWire, Long inputTid) {
 
             eventName.setLength(0);
-            final ValueIn valueIn = inWire.readEventName(eventName);
+            @NotNull final ValueIn valueIn = inWire.readEventName(eventName);
+            try {
+                assert startEnforceInValueReadCheck(inWire);
+                if (registerSubscriber.contentEquals(eventName)) {
 
-            if (registerSubscriber.contentEquals(eventName)) {
+                    @NotNull final Subscriber listener = new Subscriber() {
 
-                final Subscriber listener = new Subscriber() {
+                        @Override
+                        public void onMessage(final Object message) {
+                            publisher.add(publish -> {
+                                publish.writeDocument(true, wire -> wire.writeEventName(tid).int64
+                                        (inputTid));
+                                publish.writeNotCompleteDocument(false, wire -> wire.writeEventName(reply)
+                                        .marshallable(m -> m.write(Params.message).object(message)));
+                            });
+                        }
 
-                    @Override
-                    public void onMessage(final Object message) {
-                        publisher.add(publish -> {
-                            publish.writeDocument(true, wire -> wire.writeEventName(tid).int64
-                                    (inputTid));
-                            publish.writeNotCompleteDocument(false, wire -> wire.writeEventName(reply)
-                                    .marshallable(m -> m.write(Params.message).object(message)));
-                        });
-                    }
+                    };
 
-                };
+                    // TODO CE-101
+                    boolean bootstrap = true;
 
-                // TODO CE-101
-                boolean bootstrap = true;
-
-                valueIn.marshallable(m -> view.registerSubscriber(bootstrap, requestContext.throttlePeriodMs(), listener));
-                return;
-            }
-
-            outWire.writeDocument(true, wire -> outWire.writeEventName(tid).int64(inputTid));
-
-            writeData(inWire , out -> {
-
-                if (publish.contentEquals(eventName)) {
-
-                    valueIn.marshallable(wire -> {
-                        final Params[] params = publish.params();
-
-                        final E message = wireToE.apply(wire.read(params[1]));
-
-                        nullCheck(message);
-                        view.publish(message);
-                    });
-
+                    valueIn.marshallable(m -> view.registerSubscriber(bootstrap, requestContext.throttlePeriodMs(), listener));
+                    return;
                 }
 
-            });
+                outWire.writeDocument(true, wire -> outWire.writeEventName(tid).int64(inputTid));
+
+                writeData(inWire, out -> {
+
+                    if (publish.contentEquals(eventName)) {
+
+                        valueIn.marshallable(wire -> {
+                            @NotNull final Params[] params = publish.params();
+
+                            final E message = wireToE.apply(wire.read(params[1]));
+
+                            nullCheck(message);
+                            view.publish(message);
+                        });
+
+                    }
+
+                });
+            } finally {
+                assert endEnforceInValueReadCheck(inWire);
+            }
         }
     };
 
     void process(@NotNull final Wire inWire,
                  final Queue<Consumer<Wire>> publisher,
                  final long tid,
-                 Publisher<E> view, final Wire outWire,
+                 Publisher<E> view, @NotNull final Wire outWire,
                  final @NotNull WireAdapter<?, E> wireAdapter) {
         setOutWire(outWire);
         this.outWire = outWire;

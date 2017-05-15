@@ -40,14 +40,18 @@ public class TopologySubscriptionHandler extends SubscriptionHandler<TopologySub
     private final BiConsumer<WireIn, Long> dataConsumer = (inWire, inputTid) -> {
 
         eventName.setLength(0);
-        final ValueIn valueIn = inWire.readEventName(eventName);
-
+        @NotNull final ValueIn valueIn = inWire.readEventName(eventName);
+        assert startEnforceInValueReadCheck(inWire);
         try {
             if (before(inputTid, valueIn)) return;
 
         } catch (AssetNotFoundException e) {
             throw new AssertionError(e);
+
+        } finally {
+            assert endEnforceInValueReadCheck(inWire);
         }
+            
 
         outWire.writeDocument(true, wire -> outWire.writeEventName(tid).int64(inputTid));
 

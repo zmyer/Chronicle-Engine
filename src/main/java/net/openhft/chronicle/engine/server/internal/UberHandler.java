@@ -30,9 +30,9 @@ import net.openhft.chronicle.network.connection.WireOutPublisher;
 import net.openhft.chronicle.threads.NamedThreadFactory;
 import net.openhft.chronicle.wire.*;
 import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
@@ -47,10 +47,10 @@ import static net.openhft.chronicle.network.cluster.TerminatorHandler.terminatio
  */
 public class UberHandler extends CspTcpHander<EngineWireNetworkContext>
         implements Demarshallable, WriteMarshallable {
-
-    private static final Logger LOG = LoggerFactory.getLogger(UberHandler.class);
+ 
     private final int remoteIdentifier;
     private final int localIdentifier;
+    @NotNull
     private AtomicBoolean isClosing = new AtomicBoolean();
     private ConnectionChangedNotifier connectionChangedNotifier;
     private Asset rootAsset;
@@ -59,16 +59,12 @@ public class UberHandler extends CspTcpHander<EngineWireNetworkContext>
     private int writerIndex;
 
     @UsedViaReflection
-    private UberHandler(WireIn wire) {
+    private UberHandler(@NotNull WireIn wire) {
         remoteIdentifier = wire.read(() -> "remoteIdentifier").int32();
         localIdentifier = wire.read(() -> "localIdentifier").int32();
-        final WireType wireType = wire.read(() -> "wireType").object(WireType.class);
+        @Nullable final WireType wireType = wire.read(() -> "wireType").object(WireType.class);
         clusterName = wire.read(() -> "clusterName").text();
         wireType(wireType);
-    }
-
-    public int remoteIdentifier() {
-        return remoteIdentifier;
     }
 
     private UberHandler(int localIdentifier,
@@ -92,6 +88,10 @@ public class UberHandler extends CspTcpHander<EngineWireNetworkContext>
                 wire.write(() -> HANDLER).typedMarshallable(m);
             }
         };
+    }
+
+    public int remoteIdentifier() {
+        return remoteIdentifier;
     }
 
     public boolean isClosed() {
@@ -122,11 +122,11 @@ public class UberHandler extends CspTcpHander<EngineWireNetworkContext>
         final WireOutPublisher publisher = nc.wireOutPublisher();
         publisher(publisher);
 
-        EventLoop eventLoop = rootAsset.findOrCreateView(EventLoop.class);
+        @Nullable EventLoop eventLoop = rootAsset.findOrCreateView(EventLoop.class);
         if (!eventLoop.isClosed()) {
             eventLoop.start();
 
-            final Clusters clusters = rootAsset.findView(Clusters.class);
+            @Nullable final Clusters clusters = rootAsset.findView(Clusters.class);
 
             final EngineCluster engineCluster = clusters.get(clusterName);
             if (engineCluster == null) {
@@ -157,11 +157,11 @@ public class UberHandler extends CspTcpHander<EngineWireNetworkContext>
     }
 
     private boolean checkIdentifierEqualsHostId() {
-        final HostIdentifier hostIdentifier = rootAsset.findOrCreateView(HostIdentifier.class);
+        @Nullable final HostIdentifier hostIdentifier = rootAsset.findOrCreateView(HostIdentifier.class);
         return hostIdentifier == null || localIdentifier == hostIdentifier.hostId();
     }
 
-    private void notifyConnectionListeners(EngineCluster cluster) {
+    private void notifyConnectionListeners(@NotNull EngineCluster cluster) {
         connectionChangedNotifier = cluster.findClusterNotifier(remoteIdentifier);
         if (connectionChangedNotifier != null)
             connectionChangedNotifier.onConnectionChanged(true, nc());
@@ -174,7 +174,7 @@ public class UberHandler extends CspTcpHander<EngineWireNetworkContext>
     }
 
     private WriteMarshallable uberHandler() {
-        final UberHandler handler = new UberHandler(
+        @NotNull final UberHandler handler = new UberHandler(
                 localIdentifier,
                 remoteIdentifier,
                 wireType(),
@@ -188,7 +188,7 @@ public class UberHandler extends CspTcpHander<EngineWireNetworkContext>
      */
     private void closeSoon() {
         isClosing.set(true);
-        ScheduledExecutorService closer = newSingleThreadScheduledExecutor(new NamedThreadFactory("closer", true));
+        @NotNull ScheduledExecutorService closer = newSingleThreadScheduledExecutor(new NamedThreadFactory("closer", true));
         closer.schedule(() -> {
             closer.shutdown();
             close();
@@ -206,33 +206,41 @@ public class UberHandler extends CspTcpHander<EngineWireNetworkContext>
 
     @Override
     protected void onRead(@NotNull DocumentContext dc, @NotNull WireOut outWire) {
-        if (isClosing.get())
-            return;
-
-        onMessageReceivedOrWritten();
-
-        Wire inWire = dc.wire();
-        if (dc.isMetaData()) {
-            if (!readMeta(inWire))
+        try {
+            if (isClosing.get())
                 return;
 
+            onMessageReceivedOrWritten();
+
+            Wire inWire = dc.wire();
+            if (dc.isMetaData()) {
+                if (!readMeta(inWire))
+                    return;
+
+                SubHandler handler = handler();
+                handler.remoteIdentifier(remoteIdentifier);
+                handler.localIdentifier(localIdentifier);
+                try {
+                    handler.onInitialize(outWire);
+                } catch (RejectedExecutionException e) {
+                    throw new IllegalStateException("EventGroup shutdown", e);
+                }
+                return;
+            }
+
             SubHandler handler = handler();
-            handler.remoteIdentifier(remoteIdentifier);
-            handler.localIdentifier(localIdentifier);
-            handler.onInitialize(outWire);
-            return;
+            if (handler == null)
+                throw new IllegalStateException("handler == null, check that the " +
+                        "Csp/Cid has been sent, failed to " +
+                        "fully " +
+                        "process the following " +
+                        "YAML\n");
+
+            if (dc.isData() && !inWire.bytes().isEmpty())
+                handler.onRead(inWire, outWire);
+        } catch (Throwable e) {
+            Jvm.warn().on(getClass(), "failed to parse:" + dc.wire().readingPeekYaml(), e);
         }
-
-        SubHandler handler = handler();
-        if (handler == null)
-            throw new IllegalStateException("handler == null, check that the " +
-                    "Csp/Cid has been sent, failed to " +
-                    "fully " +
-                    "process the following " +
-                    "YAML\n");
-
-        if (dc.isData() && !inWire.bytes().isEmpty())
-            handler.onRead(inWire, outWire);
     }
 
     @Override
@@ -291,6 +299,7 @@ public class UberHandler extends CspTcpHander<EngineWireNetworkContext>
         public Factory() {
         }
 
+        @NotNull
         @Override
         public WriteMarshallable apply(@NotNull final ClusterContext clusterContext,
                                        @NotNull final HostDetails hostdetails) {

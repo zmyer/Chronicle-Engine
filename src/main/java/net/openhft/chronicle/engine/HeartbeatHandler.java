@@ -35,6 +35,7 @@ import net.openhft.chronicle.wire.WireIn;
 import net.openhft.chronicle.wire.WireOut;
 import net.openhft.chronicle.wire.WriteMarshallable;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,7 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 /**
- * will periodically send a heatbeat message, the period of this message is defined by {@link
+ * will periodically send a heartbeat message, the period of this message is defined by {@link
  * HeartbeatHandler#heartbeatIntervalMs} once the heart beat is
  *
  * @author Rob Austin.
@@ -56,11 +57,13 @@ public class HeartbeatHandler<T extends EngineWireNetworkContext> extends Abstra
     private final long heartbeatTimeoutMs;
     private final AtomicBoolean hasHeartbeats = new AtomicBoolean();
     private volatile long lastTimeMessageReceived;
+    @Nullable
     private ConnectionListener connectionMonitor;
+    @Nullable
     private Timer timer;
 
     @UsedViaReflection
-    protected HeartbeatHandler(@NotNull WireIn w) {
+    public HeartbeatHandler(@NotNull WireIn w) {
         heartbeatTimeoutMs = w.read(() -> "heartbeatTimeoutMs").int64();
         heartbeatIntervalMs = w.read(() -> "heartbeatIntervalMs").int64();
         assert heartbeatTimeoutMs >= 1000 :
@@ -95,13 +98,13 @@ public class HeartbeatHandler<T extends EngineWireNetworkContext> extends Abstra
     }
 
     @Override
-    public void onInitialize(WireOut outWire) {
+    public void onInitialize(@NotNull WireOut outWire) {
 
         if (nc().isAcceptor())
             heartbeatHandler(heartbeatTimeoutMs, heartbeatIntervalMs, cid()).writeMarshallable
                     (outWire);
 
-        final WriteMarshallable heartbeatMessage = w -> {
+        @NotNull final WriteMarshallable heartbeatMessage = w -> {
             w.writeDocument(true, d -> d.write(CoreFields.cid).int64(cid()));
             w.writeDocument(false, d -> d.write(() -> "heartbeat").text(""));
         };
@@ -114,7 +117,7 @@ public class HeartbeatHandler<T extends EngineWireNetworkContext> extends Abstra
 
     private void startPeriodicallySendingHeartbeats(WriteMarshallable heartbeatMessage) {
 
-        final VanillaEventHandler task = () -> {
+        @NotNull final VanillaEventHandler task = () -> {
             if (isClosed())
                 throw new InvalidEventHandlerException("closed");
             // we will only publish a heartbeat if the wire out publisher is empty
@@ -225,8 +228,9 @@ public class HeartbeatHandler<T extends EngineWireNetworkContext> extends Abstra
         public Factory() {
         }
 
+        @NotNull
         @Override
-        public WriteMarshallable apply(ClusterContext clusterContext) {
+        public WriteMarshallable apply(@NotNull ClusterContext clusterContext) {
             long heartbeatTimeoutMs = clusterContext.heartbeatTimeoutMs();
             long heartbeatIntervalMs = clusterContext.heartbeatIntervalMs();
             return heartbeatHandler(heartbeatTimeoutMs, heartbeatIntervalMs,

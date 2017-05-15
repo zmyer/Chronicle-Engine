@@ -27,7 +27,6 @@ import java.util.stream.StreamSupport;
 
 import static java.util.Spliterators.spliteratorUnknownSize;
 import static net.openhft.chronicle.core.util.ObjectUtils.convertTo;
-import static net.openhft.chronicle.engine.api.column.ColumnViewInternal.DOp.toRange;
 import static net.openhft.chronicle.queue.TailerDirection.BACKWARD;
 import static net.openhft.chronicle.wire.Wires.fieldInfos;
 
@@ -37,6 +36,7 @@ import static net.openhft.chronicle.wire.Wires.fieldInfos;
 public class QueueWrappingColumnView<K, V> implements QueueColumnView {
 
     private final Asset asset;
+    @NotNull
     private final QueueView<String, V> queueView;
     @Nullable
     private ArrayList<String> columnNames = null;
@@ -45,11 +45,11 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
     public QueueWrappingColumnView(
             RequestContext requestContext,
             Asset asset,
-            QueueView<String, V> queueView) {
+            @NotNull QueueView<String, V> queueView) {
         this.asset = asset;
         this.queueView = queueView;
 
-        final QueueView.Excerpt<String, V> excerpt = queueView.getExcerpt(0);
+        @Nullable final QueueView.Excerpt<String, V> excerpt = queueView.getExcerpt(0);
         if (excerpt != null)
             messageClass = excerpt.message().getClass();
         else
@@ -79,6 +79,7 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
             return iterator(filters.marshableFilters, filters.fromIndex);
     }
 
+    @NotNull
     Map<List<MarshableFilter>, NavigableMap<Long, ChronicleQueueRow>> indexCache = new ConcurrentHashMap<>();
 
     @NotNull
@@ -98,7 +99,7 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
 
         @NotNull final ClosableIterator<ChronicleQueueRow> result = toIterator(filters, index0);
 
-        ChronicleQueueRow r = null;
+        @Nullable ChronicleQueueRow r = null;
         while (count < fromSequenceNumber && result.hasNext()) {
             r = result.next();
             count++;
@@ -116,8 +117,9 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
 
     @NotNull
     private ClosableIterator<ChronicleQueueRow> toIterator(@NotNull List<MarshableFilter> filters, final long index) {
-        final Iterator<QueueView.Excerpt<String, V>> i = new Iterator<QueueView.Excerpt<String, V>>() {
+        @Nullable final Iterator<QueueView.Excerpt<String, V>> i = new Iterator<QueueView.Excerpt<String, V>>() {
 
+            @Nullable
             QueueView.Excerpt<String, V> next = queueView.getExcerpt(index);
 
             @Override
@@ -127,6 +129,7 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
                 return next != null;
             }
 
+            @Nullable
             @Override
             public QueueView.Excerpt<String, V> next() {
                 if (this.next == null)
@@ -192,9 +195,9 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
         long fromSequenceNumber = -1;
 
         if (countFromEnd > 0) {
-            final SingleChronicleQueue chronicleQueue = (SingleChronicleQueue) queueView.underlying();
+            @Nullable final SingleChronicleQueue chronicleQueue = (SingleChronicleQueue) queueView.underlying();
 
-            final ExcerptTailer excerptTailer = chronicleQueue.createTailer().direction(BACKWARD).toEnd();
+            @NotNull final ExcerptTailer excerptTailer = chronicleQueue.createTailer().direction(BACKWARD).toEnd();
             fromSequenceNumber = excerptTailer.index();
             if (fromSequenceNumber == 0)
                 return 0;
@@ -281,6 +284,9 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
 
     @Nullable
     public Predicate<QueueView.Excerpt<String, V>> filter(@Nullable List<MarshableFilter> filters) {
+
+        @Nullable final Predicate predicate = predicate(filters);
+
         return excerpt -> {
 
             if (filters == null || filters.isEmpty())
@@ -306,7 +312,7 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
                             if (o == null)
                                 return false;
                             if (o instanceof Number) {
-                                if (toRange((Number) o, f.filter.trim()))
+                                if (predicate.test(o))
                                     continue;
                                 return false;
                             }
@@ -324,7 +330,7 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
                         if (!item.toString().toLowerCase().contains(f.filter.toLowerCase()))
                             return false;
                     } else if (item instanceof Number) {
-                        if (!toRange((Number) item, f.filter.trim()))
+                        if (!predicate.test(item))
                             return false;
                     } else {
                         if (!item.equals(convertTo(item.getClass(), f.filter.trim())))
@@ -350,14 +356,11 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
     @Override
     public int rowCount(@NotNull SortedFilter filters) {
 
-        long fromSequenceNumber = filters.fromIndex;
         long countFromEnd = filters.countFromEnd;
-
-        assert countFromEnd != 0 && fromSequenceNumber == 0;
 
         if (countFromEnd > 0) {
             int count0 = 0;
-            ClosableIterator<ChronicleQueueRow> iterator = iterator(filters);
+            @NotNull ClosableIterator<ChronicleQueueRow> iterator = iterator(filters);
 
             while (iterator.hasNext()) {
                 iterator.next();
@@ -387,7 +390,7 @@ public class QueueWrappingColumnView<K, V> implements QueueColumnView {
             iterator = iterator(filters);
 
         boolean hasMoreData = false;
-        ChronicleQueueRow row = null;
+        @Nullable ChronicleQueueRow row = null;
 
         while (iterator.hasNext()) {
             row = iterator.next();

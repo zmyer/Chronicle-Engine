@@ -19,11 +19,14 @@ package net.openhft.chronicle.engine.api.query;
 
 import net.openhft.chronicle.core.annotation.UsedViaReflection;
 import net.openhft.chronicle.core.io.IORuntimeException;
-import net.openhft.chronicle.wire.Demarshallable;
-import net.openhft.chronicle.wire.Marshallable;
-import net.openhft.chronicle.wire.WireIn;
-import net.openhft.chronicle.wire.WireOut;
+import net.openhft.chronicle.core.util.ObjectUtils;
+import net.openhft.chronicle.wire.*;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * Created by rob on 27/04/2016.
@@ -33,10 +36,11 @@ public class IndexedValue<V extends Marshallable> implements Demarshallable, Mar
     private long index;
     private long timePublished;
     private long maxIndex;
+    @Nullable
     private V v;
     private transient Object k;
 
-    IndexedValue() {
+    public IndexedValue() {
     }
 
     @UsedViaReflection
@@ -63,6 +67,7 @@ public class IndexedValue<V extends Marshallable> implements Demarshallable, Mar
         return maxIndex;
     }
 
+    @NotNull
     public IndexedValue maxIndex(long maxIndex) {
         this.maxIndex = maxIndex;
         return this;
@@ -75,15 +80,18 @@ public class IndexedValue<V extends Marshallable> implements Demarshallable, Mar
         return index;
     }
 
+    @NotNull
     public IndexedValue index(long index) {
         this.index = index;
         return this;
     }
 
+    @Nullable
     public V v() {
         return v;
     }
 
+    @NotNull
     public IndexedValue v(V v) {
         this.v = v;
         return this;
@@ -93,6 +101,7 @@ public class IndexedValue<V extends Marshallable> implements Demarshallable, Mar
         return k;
     }
 
+    @NotNull
     public IndexedValue k(Object k) {
         this.k = k;
         return this;
@@ -100,10 +109,10 @@ public class IndexedValue<V extends Marshallable> implements Demarshallable, Mar
 
     @Override
     public void writeMarshallable(@NotNull WireOut wire) {
-        wire.write("index").int64_0x(index);
+        wire.write("i").int64_0x(index);
         wire.write("v").typedMarshallable(v);
-        wire.write("timePublished").int64(timePublished);
-        wire.write("maxIndex").int64(maxIndex);
+        wire.write("t").int64(timePublished);
+        wire.write("m").int64(maxIndex);
     }
 
     @Override
@@ -115,17 +124,31 @@ public class IndexedValue<V extends Marshallable> implements Demarshallable, Mar
         return timePublished;
     }
 
-    public IndexedValue timePublished(long timePublished) {
+    @NotNull
+    IndexedValue timePublished(long timePublished) {
         this.timePublished = timePublished;
         return this;
     }
 
+
+    private final Function<Class, ReadMarshallable> reuseFunction = new Function<Class, ReadMarshallable>() {
+        private final Map<Class<? extends ReadMarshallable>, ReadMarshallable> map = new ConcurrentHashMap<>();
+
+        @Override
+        public ReadMarshallable apply(Class aClass) {
+            assert aClass != null;
+            return map.computeIfAbsent(aClass, ObjectUtils::newInstance);
+        }
+    };
+
+
     @Override
     public void readMarshallable(@NotNull WireIn wire) throws IORuntimeException {
-        index = wire.read(() -> "index").int64();
-        v =  wire.read(() -> "v").typedMarshallable();
-        timePublished = wire.read(() -> "timePublished").int64();
-        maxIndex = wire.read(() -> "maxIndex").int64();
+        index = wire.read(() -> "i").int64();
+        ValueIn read = wire.read(() -> "v");
+        v = read.typedMarshallable(reuseFunction);
+        timePublished = wire.read(() -> "t").int64();
+        maxIndex = wire.read(() -> "m").int64();
     }
 
 }

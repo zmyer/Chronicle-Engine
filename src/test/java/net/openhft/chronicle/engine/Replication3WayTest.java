@@ -19,6 +19,7 @@ package net.openhft.chronicle.engine;
 
 import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.OS;
+import net.openhft.chronicle.core.io.Closeable;
 import net.openhft.chronicle.core.pool.ClassAliasPool;
 import net.openhft.chronicle.core.threads.ThreadDump;
 import net.openhft.chronicle.engine.api.EngineReplication;
@@ -63,6 +64,7 @@ public class Replication3WayTest extends ThreadMonitoringTest {
     public ServerEndpoint serverEndpoint1;
     public ServerEndpoint serverEndpoint2;
     public ServerEndpoint serverEndpoint3;
+    @NotNull
     @Rule
     public TestName testName = new TestName();
     public String name;
@@ -92,7 +94,7 @@ public class Replication3WayTest extends ThreadMonitoringTest {
                 "host.port2",
                 "host.port3");
 
-        WireType writeType = WireType.TEXT;
+        @NotNull WireType writeType = WireType.TEXT;
         tree1 = create(1, writeType, "clusterThree");
         tree2 = create(2, writeType, "clusterThree");
         tree3 = create(3, writeType, "clusterThree");
@@ -109,19 +111,17 @@ public class Replication3WayTest extends ThreadMonitoringTest {
 
     @After
     public void preAfter() {
-        if (serverEndpoint1 != null)
-            serverEndpoint1.close();
-        if (serverEndpoint2 != null)
-            serverEndpoint2.close();
-        if (serverEndpoint3 != null)
-            serverEndpoint3.close();
+  
+        Closeable.closeQuietly(tree1);
+        Closeable.closeQuietly(tree2);
+        Closeable.closeQuietly(tree3);
+        Closeable.closeQuietly(serverEndpoint1);
+        Closeable.closeQuietly(serverEndpoint2);
+        Closeable.closeQuietly(serverEndpoint3);
 
-        if (tree1 != null)
-            tree1.close();
-        if (tree2 != null)
-            tree2.close();
-        if (tree3 != null)
-            tree3.close();
+
+
+
 
         TcpChannelHub.closeAllHubs();
         TCPRegistry.reset();
@@ -134,7 +134,7 @@ public class Replication3WayTest extends ThreadMonitoringTest {
 
     @NotNull
     private AssetTree create(final int hostId, WireType writeType, final String clusterTwo) {
-        AssetTree tree = new VanillaAssetTree((byte) hostId)
+        @NotNull AssetTree tree = new VanillaAssetTree((byte) hostId)
                 .forTesting()
                 .withConfig(resourcesDir() + "/3way", OS.TARGET + "/" + hostId);
 
@@ -161,19 +161,19 @@ public class Replication3WayTest extends ThreadMonitoringTest {
     @Test
     public void testThreeWay() throws InterruptedException {
 
-        final ConcurrentMap<String, String> map1 = tree1.acquireMap(name, String.class, String
+        @NotNull final ConcurrentMap<String, String> map1 = tree1.acquireMap(name, String.class, String
                 .class);
         assertNotNull(map1);
 
         map1.put("hello1", "world1");
 
-        final ConcurrentMap<String, String> map2 = tree2.acquireMap(name, String.class, String
+        @NotNull final ConcurrentMap<String, String> map2 = tree2.acquireMap(name, String.class, String
                 .class);
         assertNotNull(map2);
 
         map2.put("hello2", "world2");
 
-        final ConcurrentMap<String, String> map3 = tree3.acquireMap(name, String.class, String
+        @NotNull final ConcurrentMap<String, String> map3 = tree3.acquireMap(name, String.class, String
                 .class);
         assertNotNull(map3);
 
@@ -185,7 +185,7 @@ public class Replication3WayTest extends ThreadMonitoringTest {
             Jvm.pause(300);
         }
 
-        for (Map m : new Map[]{map1, map2}) {
+        for (@NotNull Map m : new Map[]{map1, map2}) {
             Assert.assertEquals("world1", m.get("hello1"));
             Assert.assertEquals("world2", m.get("hello2"));
             Assert.assertEquals("world3", m.get("hello3"));

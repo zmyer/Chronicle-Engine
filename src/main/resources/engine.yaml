@@ -22,29 +22,45 @@
           heartbeatTimeoutMs: 500_000L,
           heartbeatIntervalMs: 300_000L,
           #
-          # controlls how the heartbeating works
+          # controls how the heart-beating works
           heartbeatFactory: !HeartbeatHandlerFactory {},
           #
-          # connection are established origionally bi-directionlly, then the conneciton with the
+          # connection are established originally bi-directionally, then the connection with the
           # hostID is dropped
           connectionStrategy: !HostIdConnectionStrategy {},
-          serverThreadingStrategy: CONCURRENT
+          serverThreadingStrategy: CONCURRENT,
         },
 
         host1: {
            hostId: 1,
            tcpBufferSize: 65536,
-           connectUri: localhost:9090,
+           connectUri: localhost9090,
            timeoutMs: 5000,
         },
         host2: {
            hostId: 2,
            tcpBufferSize: 65536,
-               connectUri: localhost:9091,
+           connectUri: localhost9091,
            timeoutMs: 5000,
         }
       }
-
+    }
+  },
+  queue: {
+    # pre defended queues
+    queue1: !QueueCfg {
+      masterId: 1,
+      basePath: "~/my_path",
+      cluster: clusterTwo,
+      topicClass: !type String,
+      messageClass: !type String,
+      acknowledgment: false,
+      messageAdaptor: !!null "",
+      wireType: !WireType BINARY,
+    },
+    queue2: !QueueCfg {
+      masterId: 1,
+      filePath: "~/my_path2",
     }
   }
 }

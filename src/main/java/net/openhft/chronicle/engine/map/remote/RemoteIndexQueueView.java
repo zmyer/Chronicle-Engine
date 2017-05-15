@@ -32,12 +32,14 @@ import net.openhft.chronicle.network.connection.AbstractStatelessClient;
 import net.openhft.chronicle.network.connection.TcpChannelHub;
 import net.openhft.chronicle.wire.*;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 
 import static net.openhft.chronicle.engine.server.internal.IndexQueueViewHandler.EventId.*;
 import static net.openhft.chronicle.network.connection.CoreFields.reply;
@@ -58,19 +60,21 @@ public class RemoteIndexQueueView<K extends Marshallable, V extends Marshallable
         super(asset.findView(TcpChannelHub.class), (long) 0, toUri(context));
     }
 
+    @NotNull
     private static String toUri(@NotNull final RequestContext context) {
         return context.viewType(IndexQueueView.class).toUri();
     }
 
     @Override
-    public void registerSubscriber(@NotNull Subscriber<IndexedValue<V>> subscriber, @NotNull IndexQuery<V> vanillaIndexQuery) {
+    public void registerSubscriber(@NotNull Subscriber<IndexedValue<V>> subscriber,
+                                   @NotNull IndexQuery<V> vanillaIndexQuery) {
 
-        final AtomicBoolean hasAlreadySubscribed = new AtomicBoolean();
+        @NotNull final AtomicBoolean hasAlreadySubscribed = new AtomicBoolean();
 
         if (hub.outBytesLock().isHeldByCurrentThread())
             throw new IllegalStateException("Cannot view map while debugging");
 
-        final AbstractAsyncSubscription asyncSubscription = new AbstractAsyncSubscription(
+        @Nullable final AbstractAsyncSubscription asyncSubscription = new AbstractAsyncSubscription(
                 hub,
                 csp,
                 "RemoteIndexQueueView registerTopicSubscriber") {
@@ -80,15 +84,23 @@ public class RemoteIndexQueueView<K extends Marshallable, V extends Marshallable
 
             @Override
             public void onSubscribe(@NotNull final WireOut wireOut) {
-
+                IndexQuery<V> q;
                 // this allows us to resubscribe from the last index we received
-                if (hasAlreadySubscribed.getAndSet(true))
-                    ((VanillaIndexQuery) vanillaIndexQuery).fromIndex(fromIndex);
+                if (hasAlreadySubscribed.getAndSet(true)) {
+                    VanillaIndexQuery query = vanillaIndexQuery.deepCopy();
+                    query.fromIndex(fromIndex + 1);
+                    query.bootstrap(false);
+                    q = query;
+                } else
+                    q = vanillaIndexQuery;
 
                 subscribersToTid.put(subscriber, tid());
                 wireOut.writeEventName(registerSubscriber)
-                        .typedMarshallable(vanillaIndexQuery);
+                        .typedMarshallable(q);
             }
+
+            private final IndexedValue<V> instance = new IndexedValue<V>();
+            private final Function<Class, ReadMarshallable> reuseFunction = c -> instance;
 
             @Override
             public void onConsumer(@NotNull final WireIn inWire) {
@@ -98,12 +110,12 @@ public class RemoteIndexQueueView<K extends Marshallable, V extends Marshallable
                         return;
 
                     final StringBuilder sb = Wires.acquireStringBuilder();
-                    final ValueIn valueIn = dc.wire().readEventName(sb);
+                    @NotNull final ValueIn valueIn = dc.wire().readEventName(sb);
 
                     if (reply.contentEquals(sb))
                         try {
-                            final IndexedValue<V> e = valueIn.typedMarshallable();
-                            fromIndex = e.index();
+                            @Nullable final IndexedValue<V> e = valueIn.typedMarshallable(reuseFunction);
+                            fromIndex = Math.max(fromIndex, e.index());
                             subscriber.onMessage(e);
                         } catch (InvalidSubscriberException e) {
                             RemoteIndexQueueView.this.unregisterSubscriber(subscriber);

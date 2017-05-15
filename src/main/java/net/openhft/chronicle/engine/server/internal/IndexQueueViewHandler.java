@@ -31,6 +31,7 @@ import net.openhft.chronicle.network.connection.WireOutConsumer;
 import net.openhft.chronicle.network.connection.WireOutPublisher;
 import net.openhft.chronicle.wire.*;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,118 +59,124 @@ public class IndexQueueViewHandler<V extends Marshallable> extends AbstractHandl
     private final BiConsumer<WireIn, Long> dataConsumer = (inWire, inputTid) -> {
 
         eventName.setLength(0);
-        final ValueIn valueIn = inWire.readEventName(eventName);
+        @NotNull final ValueIn valueIn = inWire.readEventName(eventName);
+        try {
+            assert startEnforceInValueReadCheck(inWire);
 
-        if (registerSubscriber.contentEquals(eventName)) {
-            if (tidToListener.containsKey(tid)) {
-                LOG.info("Duplicate topic registration for tid " + tid);
-                return;
-            }
 
-            final ConsumingSubscriber<IndexedValue<V>> listener = new ConsumingSubscriber<IndexedValue<V>>() {
-
-                volatile WireOutConsumer wireOutConsumer;
-                volatile boolean subscriptionEnded;
-
-                @Override
-                public void onMessage(IndexedValue indexedEntry) throws InvalidSubscriberException {
-
-                    if (publisher.isClosed())
-                        throw new InvalidSubscriberException();
-
-                    publisher.put(indexedEntry.k(), publish -> {
-                        publish.writeDocument(true, wire -> wire.writeEventName(tid).int64(inputTid));
-                        publish.writeNotCompleteDocument(false, wire ->
-                                wire.writeEventName(reply).typedMarshallable(indexedEntry));
-                    });
+            if (registerSubscriber.contentEquals(eventName)) {
+                if (tidToListener.containsKey(tid)) {
+                    skipValue(valueIn);
+                    LOG.info("Duplicate topic registration for tid " + tid);
+                    return;
                 }
 
-                public void onEndOfSubscription() {
-                    subscriptionEnded = true;
-                    if (publisher.isClosed())
-                        return;
-                    publisher.put(null, publish -> {
-                        publish.writeDocument(true, wire ->
-                                wire.writeEventName(tid).int64(inputTid));
-                        publish.writeDocument(false, wire ->
-                                wire.writeEventName(ObjectKVSubscriptionHandler.EventId.onEndOfSubscription).text(""));
-                    });
-                }
+                @NotNull final ConsumingSubscriber<IndexedValue<V>> listener = new ConsumingSubscriber<IndexedValue<V>>() {
 
-                /**
-                 * used to publish bytes on the nio socket thread
-                 *
-                 * @param supplier reads a chronicle queue and
-                 *                        publishes writes the data
-                 *                        directly to the socket
-                 */
-                public void addSupplier(Supplier<Marshallable> supplier) {
-                    publisher.addWireConsumer(wireOut -> {
+                    volatile WireOutConsumer wireOutConsumer;
+                    volatile boolean subscriptionEnded;
 
-                        Marshallable marshallable = supplier.get();
-                        if (marshallable == null)
-                            return;
+                    @Override
+                    public void onMessage(@NotNull IndexedValue indexedEntry) throws InvalidSubscriberException {
 
                         if (publisher.isClosed())
+                            throw new InvalidSubscriberException();
+
+                        publisher.put(indexedEntry.k(), publish -> {
+                            publish.writeDocument(true, wire -> wire.writeEventName(tid).int64(inputTid));
+                            publish.writeNotCompleteDocument(false, wire ->
+                                    wire.writeEventName(reply).typedMarshallable(indexedEntry));
+                        });
+                    }
+
+                    public void onEndOfSubscription() {
+                        subscriptionEnded = true;
+                        if (publisher.isClosed())
                             return;
+                        publisher.put(null, publish -> {
+                            publish.writeDocument(true, wire ->
+                                    wire.writeEventName(tid).int64(inputTid));
+                            publish.writeDocument(false, wire ->
+                                    wire.writeEventName(ObjectKVSubscriptionHandler.EventId.onEndOfSubscription).text(""));
+                        });
+                    }
 
-                        wireOut.writeDocument(true, wire -> wire.writeEventName(tid).int64(inputTid));
-                        wireOut.writeNotCompleteDocument(false,
-                                wire -> wire.writeEventName(reply).typedMarshallable(marshallable));
+                    /**
+                     * used to publish bytes on the nio socket thread
+                     *
+                     * @param supplier reads a chronicle queue and
+                     *                 publishes writes the data
+                     *                 directly to the socket
+                     */
+                    public void addSupplier(@NotNull Supplier<Marshallable> supplier) {
+                        publisher.addWireConsumer(wireOut -> {
 
-                    });
+                            Marshallable marshallable = supplier.get();
+                            if (marshallable == null)
+                                return;
+
+                            if (publisher.isClosed())
+                                return;
+
+                            wireOut.writeDocument(true, wire -> wire.writeEventName(tid).int64(inputTid));
+                            wireOut.writeNotCompleteDocument(false,
+                                    wire -> wire.writeEventName(reply).typedMarshallable(marshallable));
+
+                        });
+                    }
+
+                    @Override
+                    public void close() {
+                        publisher.removeBytesConsumer(wireOutConsumer);
+                    }
+                };
+
+                @Nullable final VanillaIndexQuery<V> query = valueIn.typedMarshallable();
+
+                if (query.select().isEmpty() || query.valueClass() == null) {
+                    Jvm.debug().on(getClass(), "received empty query");
+                    return;
                 }
 
-                @Override
-                public void close() {
-                    publisher.removeBytesConsumer(wireOutConsumer);
+                try {
+                    query.filter();
+                } catch (Exception e) {
+                    Jvm.warn().on(getClass(), "unable to load the filter predicate for this query=" + query, e);
+                    return;
                 }
-            };
 
-            final VanillaIndexQuery<V> query = valueIn.typedMarshallable();
-
-            if (query.select().isEmpty() || query.valueClass() == null) {
-                Jvm.debug().on(getClass(), "received empty query");
+                @NotNull final IndexQueueView<ConsumingSubscriber<IndexedValue<V>>, V> indexQueueView =
+                        contextAsset.acquireView(IndexQueueView.class);
+                indexQueueView.registerSubscriber(listener, query);
                 return;
             }
 
-            try {
-                query.filter();
-            } catch (Exception e) {
-                Jvm.warn().on(getClass(), "unable to load the filter predicate for this query=" + query, e);
+            if (unregisterSubscriber.contentEquals(eventName)) {
+                skipValue(valueIn);
+                @NotNull VanillaIndexQueueView<V> indexQueueView = contextAsset.acquireView(VanillaIndexQueueView.class);
+                ConsumingSubscriber<IndexedValue<V>> listener = tidToListener.remove(inputTid);
+
+                if (listener == null) {
+                    Jvm.debug().on(getClass(), "No subscriber to present to unsubscribe (" + inputTid + ")");
+                    return;
+                }
+
+                if (listener instanceof Closeable)
+                    listener.close();
+
+                indexQueueView.unregisterSubscriber(listener);
                 return;
             }
-
-            final IndexQueueView<ConsumingSubscriber<IndexedValue<V>>, V> indexQueueView =
-                    contextAsset.acquireView(IndexQueueView.class);
-            indexQueueView.registerSubscriber(listener, query);
-            return;
+        } finally {
+            assert endEnforceInValueReadCheck(inWire);
         }
-
-        if (unregisterSubscriber.contentEquals(eventName)) {
-
-            VanillaIndexQueueView<V> indexQueueView = contextAsset.acquireView(VanillaIndexQueueView.class);
-            ConsumingSubscriber<IndexedValue<V>> listener = tidToListener.remove(inputTid);
-
-            if (listener == null) {
-                Jvm.debug().on(getClass(), "No subscriber to present to unsubscribe (" + inputTid + ")");
-                return;
-            }
-
-            if (listener instanceof Closeable)
-                listener.close();
-
-            indexQueueView.unregisterSubscriber(listener);
-            return;
-        }
-
         outWire.writeDocument(true, wire -> outWire.writeEventName(tid).int64(inputTid));
 
     };
 
     @Override
     protected void unregisterAll() {
-        final VanillaIndexQueueView<V> indexQueueView = contextAsset.acquireView(VanillaIndexQueueView.class);
+        @NotNull final VanillaIndexQueueView<V> indexQueueView = contextAsset.acquireView(VanillaIndexQueueView.class);
         tidToListener.forEach((k, listener) -> indexQueueView.unregisterSubscriber(listener));
         tidToListener.clear();
     }

@@ -19,7 +19,6 @@ import java.util.*;
 import java.util.function.Predicate;
 
 import static net.openhft.chronicle.core.util.ObjectUtils.convertTo;
-import static net.openhft.chronicle.engine.api.column.ColumnViewInternal.DOp.toRange;
 
 /**
  * @author Rob Austin.
@@ -28,6 +27,7 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
 
     private final RequestContext requestContext;
     private final Asset asset;
+    @NotNull
     private final MapView<K, V> mapView;
     private final boolean valueMarshallable;
     private final boolean valueMap;
@@ -36,13 +36,14 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
 
     public MapWrappingColumnView(RequestContext requestContext,
                                  Asset asset,
-                                 MapView<K, V> mapView) {
+                                 @NotNull MapView<K, V> mapView) {
         this.requestContext = requestContext;
         this.asset = asset;
         this.mapView = mapView;
         valueMarshallable = Marshallable.class.isAssignableFrom(mapView.valueType());
         valueMap = Map.class.isAssignableFrom(mapView.valueType());
     }
+
 
     @Override
     public void registerChangeListener(@NotNull Runnable r) {
@@ -141,7 +142,7 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
                 return row;
             }
 
-            private void addColumns(Row row,
+            private void addColumns(@NotNull Row row,
                                     final Class type,
                                     final String defaultColumnName,
                                     final Object item) {
@@ -151,13 +152,12 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
                 } else {
                     @NotNull final Marshallable value = (Marshallable) item;
                     for (@NotNull final FieldInfo info : fieldInfos) {
-//                        System.out.println(info);
+
                         if (!columnNames().contains(info.name()))
                             continue;
 
                         try {
                             final Object newValue = info.get(value);
-//                            System.out.println("\t"+newValue);
                             row.set(info.name(), newValue);
 
                         } catch (Exception e1) {
@@ -294,7 +294,7 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
             return 1;
         }
 
-        final V v = ObjectUtils.newInstance(valueType);
+        @NotNull final V v = ObjectUtils.newInstance(valueType);
 
         for (@NotNull Map.Entry<String, Object> e : row.entrySet()) {
             if ("key".equals(e.getKey()))
@@ -309,6 +309,9 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
 
     @Nullable
     private Predicate<Map.Entry<K, V>> filter(@NotNull List<MarshableFilter> filters) {
+
+        @Nullable final Predicate<Number> predicate = predicate(filters);
+
         return entry -> {
 
             if (filters.isEmpty())
@@ -335,7 +338,7 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
                             if (o == null)
                                 return false;
                             if (o instanceof Number) {
-                                if (toRange((Number) o, f.filter.trim()))
+                                if (predicate.test((Number) o))
                                     continue;
                                 return false;
                             }
@@ -353,7 +356,7 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
                         if (!item.toString().toLowerCase().contains(f.filter.toLowerCase()))
                             return false;
                     } else if (item instanceof Number) {
-                        if (!toRange((Number) item, f.filter.trim()))
+                        if (!predicate.test((Number) item))
                             return false;
                     } else {
                         if (!item.equals(convertTo(item.getClass(), f.filter.trim())))

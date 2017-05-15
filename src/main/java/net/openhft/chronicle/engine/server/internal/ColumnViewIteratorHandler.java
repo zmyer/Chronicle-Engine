@@ -30,7 +30,7 @@ public class ColumnViewIteratorHandler extends AbstractHandler {
 
     private final StringBuilder eventName = new StringBuilder();
 
-    public void process(WireIn in, WireOut out, long tid, Iterator<Row> iterator, long cid) {
+    public void process(WireIn in, @NotNull WireOut out, long tid, Iterator<Row> iterator, long cid) {
 
 
         setOutWire(out);
@@ -62,10 +62,10 @@ public class ColumnViewIteratorHandler extends AbstractHandler {
         public void accept(WireIn wireIn, Long inputTid) {
 
             eventName.setLength(0);
-            final ValueIn valueIn = inWire.readEventName(eventName);
+            @NotNull final ValueIn valueIn = inWire.readEventName(eventName);
 
             try {
-
+                assert startEnforceInValueReadCheck(inWire);
                 outWire.writeDocument(true, wire -> outWire.writeEventName(CoreFields.tid).int64(tid));
 
                 writeData(inWire, out -> {
@@ -74,7 +74,7 @@ public class ColumnViewIteratorHandler extends AbstractHandler {
 
                         int nextChunkSize = valueIn.int32();
 
-                        final ArrayList<Row> chunk = new ArrayList<>();
+                        @NotNull final ArrayList<Row> chunk = new ArrayList<>();
 
                         for (int i = 0; i < nextChunkSize; i++) {
                             if (!iterator.hasNext())
@@ -87,6 +87,7 @@ public class ColumnViewIteratorHandler extends AbstractHandler {
                     }
 
                     if (close.contentEquals(eventName)) {
+                        skipValue(valueIn);
                         cspManager.removeCid(cid);
                         return;
                     }
@@ -96,6 +97,8 @@ public class ColumnViewIteratorHandler extends AbstractHandler {
 
             } catch (Exception e) {
                 Jvm.warn().on(getClass(), e);
+            }finally {
+                assert endEnforceInValueReadCheck(inWire);
             }
         }
     };
