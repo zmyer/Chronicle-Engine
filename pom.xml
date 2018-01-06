@@ -15,21 +15,21 @@
   ~ limitations under the License.
   -->
 
-<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <properties>
         <additionalparam>-Xdoclint:none</additionalparam>
     </properties>
     <parent>
-        <groupId>net.openhft</groupId>
+        <groupId>software.chronicle</groupId>
         <artifactId>chronicle-enterprise-root-pom</artifactId>
-        <version>1.0.3</version>
+        <version>1.0.6</version>
         <relativePath />
     </parent>
 
+    <groupId>net.openhft</groupId>
     <modelVersion>4.0.0</modelVersion>
     <artifactId>chronicle-engine</artifactId>
-    <version>1.14.2-SNAPSHOT</version>
+    <version>1.14.23-SNAPSHOT</version>
     <name>OpenHFT/Chronicle-Engine</name>
     <description>Chronicle Engine Framework</description>
     <packaging>bundle</packaging>
@@ -40,16 +40,25 @@
                 <groupId>net.openhft</groupId>
                 <artifactId>third-party-bom</artifactId>
                 <type>pom</type>
-                <version>3.5.9</version>
+                <!-- PLEASE DON'T LEAVE THIS ON A SNAPSHOT because they get missed in a release  -->
+                <version>3.6.0</version>
                 <scope>import</scope>
             </dependency>
 
             <dependency>
                 <groupId>net.openhft</groupId>
                 <artifactId>chronicle-bom</artifactId>
-                <version>1.14.6-SNAPSHOT</version>
+                <version>1.15.25</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+
+            <!-- forces engine to use an older version of map, until it has been updated -->
+            <dependency>
+                <groupId>net.openhft</groupId>
+                <artifactId>chronicle-map</artifactId>
+                <version>2.4.17</version>
             </dependency>
 
         </dependencies>
@@ -84,11 +93,11 @@
             <groupId>net.openhft</groupId>
             <artifactId>chronicle-wire</artifactId>
         </dependency>
-   <!--     <dependency>
-            <groupId>software.chronicle</groupId>
-            <artifactId>chronicle-wire-enterprise</artifactId>
-        </dependency>
--->
+        <!--     <dependency>
+                 <groupId>software.chronicle</groupId>
+                 <artifactId>chronicle-wire-enterprise</artifactId>
+             </dependency>
+     -->
 
         <dependency>
             <groupId>net.openhft</groupId>
@@ -198,6 +207,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.6.2</version>
                 <configuration>
                     <compilerArgument>-Xlint:deprecation</compilerArgument>
                     <source>1.8</source>
@@ -237,13 +247,35 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.19.1</version>
                 <configuration>
-                    <forkCount>4</forkCount>
-                    <reuseForks>true</reuseForks>
+                    <!--<forkCount>4</forkCount>-->
+                    <!--<reuseForks>true</reuseForks>-->
+                    <runOrder>hourly</runOrder>
                 </configuration>
             </plugin>
 
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>2.19.1</version>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/Replication3WayIntIntTest.java</exclude>
+                                <exclude>**/TcpManyClientConnectionsOnManyMapsTest.java</exclude>
+                                <exclude>**/TcpManyClientConnectionsTest.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
     <scm>
         <url>scm:git:git@github.com:OpenHFT/Chronicle-Engine.git</url>

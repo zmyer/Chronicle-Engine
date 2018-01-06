@@ -49,10 +49,6 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 
-/**
- * Created by Rob Austin
- */
-
 public class MainCluster5 {
     public static final WireType WIRE_TYPE = WireType.BINARY;
     public static final int entries = 50;
@@ -91,27 +87,27 @@ public class MainCluster5 {
             case "one":
 
                 tree = create(1, writeType, CLUSTER);
-                serverEndpoint = new ServerEndpoint(":8081", tree);
+                serverEndpoint = new ServerEndpoint(":8081", tree, "cluster");
                 break;
 
             case "two":
                 tree = create(2, writeType, CLUSTER);
-                serverEndpoint = new ServerEndpoint(":8082", tree);
+                serverEndpoint = new ServerEndpoint(":8082", tree, "cluster");
                 break;
 
             case "three":
                 tree = create(3, writeType, CLUSTER);
-                serverEndpoint = new ServerEndpoint(":8083", tree);
+                serverEndpoint = new ServerEndpoint(":8083", tree, "cluster");
                 break;
 
             case "four":
                 tree = create(4, writeType, CLUSTER);
-                serverEndpoint = new ServerEndpoint(":8084", tree);
+                serverEndpoint = new ServerEndpoint(":8084", tree, "cluster");
                 break;
 
             case "five":
                 tree = create(5, writeType, CLUSTER);
-                serverEndpoint = new ServerEndpoint(":8085", tree);
+                serverEndpoint = new ServerEndpoint(":8085", tree, "cluster");
                 break;
 
             case "client":
@@ -135,7 +131,7 @@ public class MainCluster5 {
         TcpChannelHub.closeAllHubs();
         TCPRegistry.reset();
         // TODO TCPRegistery.assertAllServersStopped();
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();
             Assert.fail();

@@ -19,17 +19,19 @@ package net.openhft.chronicle.engine.api.query;
 
 import net.openhft.chronicle.core.util.ObjectUtils;
 import net.openhft.chronicle.wire.Marshallable;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
 
-/**
- * Created by peter on 08/05/16.
+/*
+ * Created by Peter Lawrey on 08/05/16.
  */
 public enum VanillaObjectCacheFactory implements ObjectCacheFactory {
     INSTANCE;
 
+    @NotNull
     ThreadLocal<Map<Class<Marshallable>, Marshallable>> t = ThreadLocal.withInitial
             (LinkedHashMap::new);
 

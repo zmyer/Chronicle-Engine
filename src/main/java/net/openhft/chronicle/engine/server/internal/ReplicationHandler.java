@@ -39,7 +39,7 @@ import java.util.function.BiConsumer;
 
 import static net.openhft.chronicle.engine.server.internal.ReplicationHandler.EventId.*;
 
-/**
+/*
  * Created by Rob Austin
  */
 public class ReplicationHandler<E> extends AbstractHandler {
@@ -170,6 +170,7 @@ public class ReplicationHandler<E> extends AbstractHandler {
             this.params = params;
         }
 
+        @Override
         @NotNull
         public <P extends WireKey> P[] params() {
             //noinspection unchecked

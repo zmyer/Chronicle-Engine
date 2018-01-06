@@ -29,6 +29,7 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -42,7 +43,6 @@ import java.util.concurrent.TimeUnit;
  *
  * @author Rob Austin.
  */
-
 public class TcpManyClientConnectionsTest extends ThreadMonitoringTest {
 
     public static final WireType WIRE_TYPE = WireType.TEXT;
@@ -51,6 +51,8 @@ public class TcpManyClientConnectionsTest extends ThreadMonitoringTest {
     private static final String CONNECTION = "host.port.TcpManyConnectionsTest";
     @NotNull
     private static ConcurrentMap[] maps = new ConcurrentMap[MAX];
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
     @NotNull
     private AssetTree[] trees = new AssetTree[MAX];
     private VanillaAssetTree serverAssetTree;
@@ -58,18 +60,19 @@ public class TcpManyClientConnectionsTest extends ThreadMonitoringTest {
 
     @Before
     public void before() throws IOException {
-        serverAssetTree = new VanillaAssetTree().forTesting();
+        serverAssetTree = hooks.addCloseable(new VanillaAssetTree().forTesting());
 
         TCPRegistry.createServerSocketChannelFor(CONNECTION);
 
-        serverEndpoint = new ServerEndpoint(CONNECTION, serverAssetTree);
+        serverEndpoint = hooks.addCloseable(new ServerEndpoint(CONNECTION, serverAssetTree, "cluster"));
 
         for (int i = 0; i < MAX; i++) {
-            trees[i] = new VanillaAssetTree().forRemoteAccess(CONNECTION, WIRE_TYPE);
+            trees[i] = hooks.addCloseable(new VanillaAssetTree().forRemoteAccess(CONNECTION, WIRE_TYPE));
             maps[i] = trees[i].acquireMap(NAME, String.class, String.class);
         }
     }
 
+    @Override
     @After
     public void preAfter() {
 

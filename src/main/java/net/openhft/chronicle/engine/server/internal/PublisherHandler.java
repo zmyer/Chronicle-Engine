@@ -34,7 +34,7 @@ import static net.openhft.chronicle.engine.server.internal.PublisherHandler.Para
 import static net.openhft.chronicle.network.connection.CoreFields.reply;
 import static net.openhft.chronicle.network.connection.CoreFields.tid;
 
-/**
+/*
  * Created by Rob Austin
  */
 public class PublisherHandler<E> extends AbstractHandler {
@@ -131,6 +131,7 @@ public class PublisherHandler<E> extends AbstractHandler {
             this.params = params;
         }
 
+        @Override
         @NotNull
         public <P extends WireKey> P[] params() {
             return (P[]) this.params;

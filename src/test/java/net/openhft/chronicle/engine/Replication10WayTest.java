@@ -49,10 +49,7 @@ import java.util.concurrent.ConcurrentMap;
 
 import static org.junit.Assert.assertNotNull;
 
-/**
- * Created by Rob Austin
- */
-@Ignore
+@Ignore("Broken")
 public class Replication10WayTest {
     public static final WireType WIRE_TYPE = WireType.TEXT;
     public static final String NAME = "/ChMaps/test";
@@ -84,7 +81,7 @@ public class Replication10WayTest {
         @NotNull WireType writeType = WireType.TEXT;
         for (int i = 0; i < NUMBER_OF_SIMULATED_SERVERS; i++) {
             tree[i] = create(i + 1, writeType, "clusterTen");
-            serverEndpoint[i] = new ServerEndpoint("host.port" + (i + 1), tree[i]);
+            serverEndpoint[i] = new ServerEndpoint("host.port" + (i + 1), tree[i], "cluster");
         }
     }
 
@@ -101,7 +98,7 @@ public class Replication10WayTest {
 
         TcpChannelHub.closeAllHubs();
         TCPRegistry.reset();
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();
             Assert.fail();
@@ -146,7 +143,6 @@ public class Replication10WayTest {
         threadDump.assertNoNewThreads();
     }
 
-    @Ignore("because it uses too much resources on a PC")
     @Test
     public void testTenWay() throws InterruptedException {
 

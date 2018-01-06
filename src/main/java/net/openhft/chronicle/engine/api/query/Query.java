@@ -19,26 +19,32 @@ package net.openhft.chronicle.engine.api.query;
 
 import net.openhft.chronicle.core.util.SerializableFunction;
 import net.openhft.chronicle.core.util.SerializablePredicate;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Consumer;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
 
-/**
+/*
  * Created by peter.lawrey on 11/07/2015.
  */
 public interface Query<T> {
 
+    @NotNull
     Query<T> filter(SerializablePredicate<? super T> predicate);
 
+    @NotNull
     <R> Query<R> map(SerializableFunction<? super T, ? extends R> mapper);
 
+    @NotNull
     <R> Query<R> project(Class<R> rClass);
 
+    @NotNull
     <R> Query<R> flatMap(SerializableFunction<? super T, ? extends Query<? extends R>> mapper);
 
     Stream<T> stream();
 
+    @NotNull
     Subscription subscribe(Consumer<? super T> action);
 
     <R, A> R collect(Collector<? super T, A, R> collector);

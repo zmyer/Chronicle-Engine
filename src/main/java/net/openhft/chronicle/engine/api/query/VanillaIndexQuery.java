@@ -75,6 +75,7 @@ public class VanillaIndexQuery<V> extends AbstractMarshallable implements Demars
         return select == null ? "" : select;
     }
 
+    @Override
     public String eventName() {
         return eventName;
     }
@@ -108,6 +109,7 @@ public class VanillaIndexQuery<V> extends AbstractMarshallable implements Demars
         return bootstrap;
     }
 
+    @Override
     public long fromIndex() {
         return from;
     }
@@ -123,6 +125,7 @@ public class VanillaIndexQuery<V> extends AbstractMarshallable implements Demars
         return this;
     }
 
+    @Override
     public Predicate<V> filter() {
         return ClassCache.newInstance(valueClass, select);
     }
@@ -138,6 +141,7 @@ public class VanillaIndexQuery<V> extends AbstractMarshallable implements Demars
                 '}';
     }
 
+    @NotNull
     public VanillaIndexQuery bootstrap(boolean bootstrap) {
         this.bootstrap = bootstrap;
         return this;
@@ -151,7 +155,9 @@ public class VanillaIndexQuery<V> extends AbstractMarshallable implements Demars
                 ConcurrentHashMap<>();
         @NotNull
         private static AtomicLong uniqueClassId = new AtomicLong();
+        @NotNull
         private static Pattern p = Pattern.compile("\"");
+        @NotNull
         private static ThreadLocal<StringBuffer> sbTl = ThreadLocal.withInitial(StringBuffer::new);
 
         private static Predicate newInstance(final Class clazz0, final String select) {
@@ -181,16 +187,16 @@ public class VanillaIndexQuery<V> extends AbstractMarshallable implements Demars
 
             CharSequence toString = select.contains("\"") ? escapeQuotes(select) : select;
 
-            @NotNull String source = new StringBuilder().
-                    append("package net.openhft.chronicle.engine.api.query;\npublic class ")
-                    .append(className)
-                    .append(" implements ")
-                    .append("java.util.function.Predicate<")
-                    .append(clazz).append("> {\n\tpublic ")
-                    .append("boolean test(").append(clazz).append(" value) ")
-                    .append("{\n\t\treturn ").append(typedSelect.select)
-                    .append(";\n\t}\n\n\tpublic String toString(){\n\t\treturn \"")
-                    .append(toString).append("\";\n\t}\n}").toString();
+            @NotNull String source = "package net.openhft.chronicle.engine.api.query;\n" +
+                    "public class " + className + " implements java.util.function.Predicate<" + clazz + "> {\n" +
+                    "\tpublic boolean test(" + clazz + " value) {\n" +
+                    "\t\treturn " + typedSelect.select + ";\n" +
+                    "\t}\n" +
+                    "\n" +
+                    "\tpublic String toString(){\n" +
+                    "\t\treturn \"" + toString + "\";\n" +
+                    "\t}\n" +
+                    "}\n";
 
             LoggerFactory.getLogger(DataValueGenerator.class).info(source);
             ClassLoader classLoader = ClassCache.class.getClassLoader();
@@ -222,9 +228,8 @@ public class VanillaIndexQuery<V> extends AbstractMarshallable implements Demars
 
                 @NotNull TypedSelect that = (TypedSelect) o;
 
-                if (select != null ? !select.equals(that.select) : that.select != null)
-                    return false;
-                return clazz != null ? clazz.equals(that.clazz) : that.clazz == null;
+                return (select != null ? select.equals(that.select) : that.select == null)
+                        && (clazz != null ? clazz.equals(that.clazz) : that.clazz == null);
 
             }
 

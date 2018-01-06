@@ -29,7 +29,7 @@ import org.junit.Before;
 import java.util.Map;
 import java.util.Properties;
 
-/**
+/*
  * Created by Rob Austin
  */
 public class ThreadMonitoringTest {
@@ -73,6 +73,7 @@ public class ThreadMonitoringTest {
         preAfter();
 
         TCPRegistry.reset();
+        threadDump.ignore("queue-thread-local-cleaner-daemon");
         threadDump.ignore("main/ChronicleMapKeyValueStore Closer");
         threadDump.ignore("tree-1/Heartbeat");
         threadDump.ignore("tree-2/Heartbeat");
@@ -84,7 +85,7 @@ public class ThreadMonitoringTest {
         YamlLogging.setAll(false);
         resetProperties();
 
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();
             Assert.fail();
@@ -93,7 +94,7 @@ public class ThreadMonitoringTest {
     }
 
     protected void preAfter() {
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();
             Assert.fail();

@@ -24,8 +24,8 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Map;
 import java.util.function.BiFunction;
 
-/**
- * Created by peter on 07/07/15.
+/*
+ * Created by Peter Lawrey on 07/07/15.
  */
 public enum MapUpdate implements SerializableUpdaterWithArg<MapView, Object> {
     PUT_ALL {

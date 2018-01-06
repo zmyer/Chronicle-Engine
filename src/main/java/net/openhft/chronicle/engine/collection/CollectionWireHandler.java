@@ -17,7 +17,7 @@
 
 package net.openhft.chronicle.engine.collection;
 
-/**
+/*
  * Created by Rob Austin
  */
 
@@ -235,6 +235,7 @@ public class CollectionWireHandler<U, C extends Collection<U>> {
             this.params = params;
         }
 
+        @Override
         @NotNull
         public <P extends WireKey> P[] params() {
             return (P[]) this.params;

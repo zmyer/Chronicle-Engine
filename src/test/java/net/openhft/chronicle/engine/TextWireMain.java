@@ -25,7 +25,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-/**
+/*
  * Created by andre on 01/05/2015.
  */
 public class TextWireMain {
@@ -38,7 +38,7 @@ public class TextWireMain {
         // the default is BinaryWire
         int port = 8088;
         @NotNull VanillaAssetTree assetTree = new VanillaAssetTree().forTesting(false);
-        serverEndpoint = new ServerEndpoint("*:" + port, assetTree);
+        serverEndpoint = new ServerEndpoint("*:" + port, assetTree, "cluster");
 
         if (args.length == 1 && args[0].compareTo("-debug") == 0) {
             System.out.println("Enabling message logging");

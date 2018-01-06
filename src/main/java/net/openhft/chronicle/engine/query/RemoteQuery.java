@@ -108,7 +108,7 @@ public class RemoteQuery<E> implements Query<E> {
     }
 
     private void forEach2(@NotNull Consumer<? super E> action) {
-        @NotNull final BlockingQueue<E> queue = new ArrayBlockingQueue<E>(128);
+        @NotNull final BlockingQueue<E> queue = new ArrayBlockingQueue<>(128);
         @NotNull final AtomicBoolean finished = new AtomicBoolean();
 
         @NotNull final Subscriber<E> accept = new Subscriber<E>() {
@@ -186,6 +186,7 @@ public class RemoteQuery<E> implements Query<E> {
         return collector.finisher().apply(container);
     }
 
+    @FunctionalInterface
     public interface Subscribable<E> {
         void subscribe(@NotNull Subscriber<E> subscriber,
                        @NotNull Filter<E> filter,

@@ -35,8 +35,8 @@ import org.junit.Test;
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static org.junit.Assert.assertEquals;
 
-/**
- * Created by peter on 12/06/15.
+/*
+ * Created by Peter Lawrey on 12/06/15.
  */
 public class InsertedEventTest {
     static {

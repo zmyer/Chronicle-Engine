@@ -49,10 +49,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Created by Rob Austin
- */
-
 public class RoundTripTest {
     public static final WireType WIRE_TYPE = WireType.BINARY;
     public static final int ENTRIES = 200;
@@ -72,14 +68,16 @@ public class RoundTripTest {
     @NotNull
     private static String CONNECTION_3 = "CONNECTION_3";
 
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
     private ThreadDump threadDump;
     private Map<ExceptionKey, Integer> exceptions;
 
     @NotNull
-    static AssetTree create(final int hostId, WireType writeType, @NotNull final List<EngineHostDetails> hostDetails) {
+    AssetTree create(final int hostId, WireType writeType, @NotNull final List<EngineHostDetails> hostDetails) {
 
-        @NotNull AssetTree tree = new VanillaAssetTree((byte) hostId)
-                .forTesting();
+        @NotNull AssetTree tree = hooks.addCloseable(new VanillaAssetTree((byte) hostId)
+                .forTesting());
 
         @NotNull Map<String, EngineHostDetails> hostDetailsMap = new ConcurrentSkipListMap<>();
 
@@ -87,8 +85,8 @@ public class RoundTripTest {
             hostDetailsMap.put(hd.toString(), hd);
         }
 
-        @NotNull final Clusters testCluster = new Clusters(Collections.singletonMap("test",
-                new EngineCluster("test")));
+        @NotNull final Clusters testCluster = hooks.addCloseable(new Clusters(Collections.singletonMap("test",
+                new EngineCluster("test"))));
 
         tree.root().addWrappingRule(MapView.class, "map directly to KeyValueStore",
                 VanillaMapView::new,
@@ -137,7 +135,7 @@ public class RoundTripTest {
     }
 
     private void checkForThrowablesInOtherThreads() {
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();
             Assert.fail();
@@ -168,17 +166,15 @@ public class RoundTripTest {
         @NotNull AssetTree serverAssetTree2 = create(2, WireType.BINARY, hostDetails);
         @NotNull AssetTree serverAssetTree3 = create(3, WireType.BINARY, hostDetails);
 
-        @NotNull ServerEndpoint serverEndpoint1 = new ServerEndpoint(CONNECTION_1, serverAssetTree1);
-        @NotNull ServerEndpoint serverEndpoint2 = new ServerEndpoint(CONNECTION_2, serverAssetTree2);
-        @NotNull ServerEndpoint serverEndpoint3 = new ServerEndpoint(CONNECTION_3, serverAssetTree3);
-
         ClassAliasPool.CLASS_ALIASES.addAlias(ChronicleMapGroupFS.class);
         ClassAliasPool.CLASS_ALIASES.addAlias(FilePerKeyGroupFS.class);
 
         //Delete any files from the last run
         Files.deleteIfExists(Paths.get(basePath, "test"));
 
-        try {
+        try (ServerEndpoint serverEndpoint1 = new ServerEndpoint(CONNECTION_1, serverAssetTree1, "cluster");
+             ServerEndpoint serverEndpoint2 = new ServerEndpoint(CONNECTION_2, serverAssetTree2, "cluster");
+             ServerEndpoint serverEndpoint3 = new ServerEndpoint(CONNECTION_3, serverAssetTree3, "cluster")) {
             // configure them
             serverAssetTree1.acquireMap(NAME, String.class, String.class).size();
             serverAssetTree2.acquireMap(NAME, String.class, String.class).size();
@@ -192,16 +188,11 @@ public class RoundTripTest {
             map2.size();
             map3.size();
 
-            ClassAliasPool.CLASS_ALIASES.addAlias(ChronicleMapGroupFS.class);
-            ClassAliasPool.CLASS_ALIASES.addAlias(FilePerKeyGroupFS.class);
+            @NotNull VanillaAssetTree treeC1 = hooks.addCloseable(new VanillaAssetTree("tree1")
+                    .forRemoteAccess(CONNECTION_1, WIRE_TYPE));
 
-            @NotNull CountDownLatch l = new CountDownLatch(ENTRIES * TIMES);
-
-            @NotNull VanillaAssetTree treeC1 = new VanillaAssetTree("tree1")
-                    .forRemoteAccess(CONNECTION_1, WIRE_TYPE);
-
-            @NotNull VanillaAssetTree treeC3 = new VanillaAssetTree("tree1")
-                    .forRemoteAccess(CONNECTION_3, WIRE_TYPE);
+            @NotNull VanillaAssetTree treeC3 = hooks.addCloseable(new VanillaAssetTree("tree1")
+                    .forRemoteAccess(CONNECTION_3, WIRE_TYPE));
             @NotNull AtomicReference<CountDownLatch> latchRef = new AtomicReference<>();
 
             treeC3.registerSubscriber(NAME, String.class, z -> {
@@ -254,10 +245,6 @@ public class RoundTripTest {
 
             Assert.assertTrue(timeTaken <= target);
 
-        } finally {
-            serverEndpoint1.close();
-            serverEndpoint2.close();
-            serverEndpoint3.close();
         }
     }
 }

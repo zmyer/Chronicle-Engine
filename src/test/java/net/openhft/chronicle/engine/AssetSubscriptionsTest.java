@@ -28,19 +28,22 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
+import org.junit.Rule;
 import org.junit.Test;
 
 import java.util.Collections;
 
 import static org.easymock.EasyMock.*;
 
-/**
- * Created by peter on 11/06/15.
+/*
+ * Created by Peter Lawrey on 11/06/15.
  */
 public class AssetSubscriptionsTest {
 
     private ThreadDump threadDump;
 
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
     @Before
     public void threadDump() {
         threadDump = new ThreadDump();
@@ -51,16 +54,11 @@ public class AssetSubscriptionsTest {
         threadDump.assertNoNewThreads();
     }
 
-    @After
-    public void afterMethod() {
-
-    }
-
     @Ignore("todo fix")
     @Test
     public void testSubscriptionsAtEachLevel() throws InvalidSubscriberException {
         // start at the top.
-        @NotNull AssetTree tree = new VanillaAssetTree().forTesting();
+        @NotNull AssetTree tree = hooks.addCloseable(new VanillaAssetTree().forTesting());
         Subscriber<TopologicalEvent> rootTopoSubscriber = createMock("sub", Subscriber.class);
         Subscriber<MapEvent> rootMapSubscriber = createMock(Subscriber.class);
         Subscriber<String> rootNameSubscriber = createMock(Subscriber.class);

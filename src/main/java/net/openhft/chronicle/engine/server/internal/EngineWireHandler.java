@@ -61,7 +61,7 @@ import static net.openhft.chronicle.core.Jvm.rethrow;
 import static net.openhft.chronicle.network.connection.CoreFields.csp;
 import static net.openhft.chronicle.network.connection.CoreFields.reply;
 
-/**
+/*
  * Created by Rob Austin
  */
 public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> implements
@@ -200,7 +200,6 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
 
         try {
             this.eventLoop.start();
-
         } catch (RejectedExecutionException e) {
             Jvm.debug().on(getClass(), e);
         }
@@ -297,9 +296,9 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
             } finally {
                 assert outWire.endUse();
             }
-        }
+        };
 
-                ;
+
     }
 
     private boolean isValid(@NotNull Class viewType) {
@@ -355,10 +354,11 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
             prevLogMessage.append(currentLogMessage);
             currentLogMessage.setLength(0);
             logToBuffer(in, currentLogMessage, in.bytes().readPosition() - 4);
-        } else {
-            //log every message
-            logYamlToStandardOut(in);
         }
+
+        //log every message
+        logYamlToStandardOut(in);
+
 
         if (inDc.isMetaData()) {
             this.metaDataConsumer.readMarshallable(in);
@@ -605,6 +605,7 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
         return systemHandler.hasClientClosed();
     }
 
+    @Override
     public void close() {
         onEndOfConnection(false);
         publisher().close();
@@ -666,7 +667,7 @@ public class EngineWireHandler extends WireTcpHandler<EngineWireNetworkContext> 
     public long createProxy(String type, long token) {
 
         createProxy0(type, cspBuff);
-        cspBuff.append("&token=" + token);
+        cspBuff.append("&token=").append(token);
 
         final long cid = acquireCid(cspBuff);
         outWire.writeEventName(reply).typePrefix("set-proxy")

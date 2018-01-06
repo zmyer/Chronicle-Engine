@@ -21,13 +21,17 @@ import net.openhft.chronicle.bytes.Bytes;
 import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.io.Closeable;
 import net.openhft.chronicle.core.io.IORuntimeException;
+import net.openhft.chronicle.core.pool.StringBuilderPool;
 import net.openhft.chronicle.core.threads.EventHandler;
 import net.openhft.chronicle.core.threads.EventLoop;
 import net.openhft.chronicle.core.threads.HandlerPriority;
 import net.openhft.chronicle.core.threads.InvalidEventHandlerException;
 import net.openhft.chronicle.engine.api.map.MapEvent;
 import net.openhft.chronicle.engine.api.map.MapView;
-import net.openhft.chronicle.engine.api.pubsub.*;
+import net.openhft.chronicle.engine.api.pubsub.Publisher;
+import net.openhft.chronicle.engine.api.pubsub.Reference;
+import net.openhft.chronicle.engine.api.pubsub.Subscriber;
+import net.openhft.chronicle.engine.api.pubsub.TopicSubscriber;
 import net.openhft.chronicle.engine.api.set.EntrySetView;
 import net.openhft.chronicle.engine.api.set.KeySetView;
 import net.openhft.chronicle.engine.api.tree.Asset;
@@ -38,9 +42,9 @@ import net.openhft.chronicle.engine.fs.EngineCluster;
 import net.openhft.chronicle.engine.fs.EngineHostDetails;
 import net.openhft.chronicle.engine.map.VanillaKeyValueStore;
 import net.openhft.chronicle.engine.map.VanillaMapView;
-import net.openhft.chronicle.engine.pubsub.QueueTopicPublisher;
 import net.openhft.chronicle.engine.query.Filter;
 import net.openhft.chronicle.engine.query.QueueConfig;
+import net.openhft.chronicle.network.cluster.ConnectionManager;
 import net.openhft.chronicle.network.connection.CoreFields;
 import net.openhft.chronicle.queue.ChronicleQueue;
 import net.openhft.chronicle.queue.ExcerptAppender;
@@ -48,7 +52,6 @@ import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.impl.RollingChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
 import net.openhft.chronicle.wire.*;
-import net.openhft.chronicle.wire.WireType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -69,6 +72,7 @@ import static net.openhft.chronicle.wire.WireType.*;
 /**
  * @author Rob Austin.
  */
+@SuppressWarnings("unchecked")
 public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>, SubAssetFactory,
         Closeable {
 
@@ -79,6 +83,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
     private final Class<T> messageTypeClass;
     @NotNull
     private final Class<M> elementTypeClass;
+    @NotNull
     private final ThreadLocal<ThreadLocalData> threadLocal;
     @NotNull
     private final String defaultPath;
@@ -89,7 +94,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
     private boolean isSource;
     private boolean isReplicating;
     private boolean dontPersist;
-
+    private static final StringBuilderPool SBP = new StringBuilderPool();
     @NotNull
     private QueueConfig queueConfig;
 
@@ -124,7 +129,8 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         if (hostId != null)
             replication(context, asset);
 
-        @Nullable EventLoop eventLoop = asset.findOrCreateView(EventLoop.class);
+        EventLoop eventLoop = asset.findOrCreateView(EventLoop.class);
+        assert eventLoop != null;
         eventLoop.addHandler(new EventHandler() {
             @Override
             public boolean action() throws InvalidEventHandlerException, InterruptedException {
@@ -142,19 +148,21 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
 
     @NotNull
     @SuppressWarnings("WeakerAccess")
-    public static WriteMarshallable newSource(long nextIndexRequired,
-                                              @NotNull Class topicType,
-                                              @NotNull Class elementType,
-                                              boolean acknowledgement,
-                                              @Nullable MessageAdaptor messageAdaptor) {
+    public static WriteMarshallable newSource(
+            @NotNull Class topicType,
+            @NotNull Class elementType,
+            boolean acknowledgement,
+            @Nullable MessageAdaptor syncMessageAdaptor,
+            @Nullable MessageAdaptor sourceMessageAdaptor,
+            long nextIndexRequired) {
         Objects.requireNonNull(topicType);
         Objects.requireNonNull(elementType);
         try {
             Class<?> aClass = Class.forName("software.chronicle.enterprise.queue.QueueSourceReplicationHandler");
-            Constructor<?> declaredConstructor = aClass.getDeclaredConstructor(long.class, Class.class,
-                    Class.class, boolean.class, MessageAdaptor.class);
-            return (WriteMarshallable) declaredConstructor.newInstance(nextIndexRequired,
-                    topicType, elementType, acknowledgement, messageAdaptor);
+            Constructor<?> declaredConstructor = aClass.getDeclaredConstructor(Class.class,
+                    Class.class, boolean.class, MessageAdaptor.class, MessageAdaptor.class, long.class);
+            return (WriteMarshallable) declaredConstructor.newInstance(
+                    topicType, elementType, acknowledgement, syncMessageAdaptor, sourceMessageAdaptor, nextIndexRequired);
 
         } catch (Exception e) {
             @NotNull IllegalStateException licence = new IllegalStateException("A Chronicle Queue Enterprise licence is" +
@@ -166,11 +174,11 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
     }
 
     /**
-     * @param topicType       the type of the topic
-     * @param elementType     the type of the element
-     * @param acknowledgement {@code true} if message acknowledgement to the source is required
-     * @param messageAdaptor  used to apply processing in the bytes before they are written to the
-     *                        queue
+     * @param topicType          the type of the topic
+     * @param elementType        the type of the element
+     * @param acknowledgement    {@code true} if message acknowledgement to the source is required
+     * @param syncMessageAdaptor used to apply processing in the bytes before they are written to the
+     *                           queue
      * @return and instance of QueueSyncReplicationHandler
      */
     @NotNull
@@ -179,15 +187,16 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
             @NotNull Class topicType,
             @NotNull Class elementType,
             boolean acknowledgement,
-            @Nullable MessageAdaptor messageAdaptor,
-            @NotNull WireType wireType) {
+            @Nullable MessageAdaptor syncMessageAdaptor,
+            @NotNull WireType wireType,
+            @Nullable MessageAdaptor sourceMessageAdaptor, long nextIndexRequired) {
         try {
 
             Class<?> aClass = Class.forName("software.chronicle.enterprise.queue.QueueSyncReplicationHandler");
             Constructor<?> declaredConstructor = aClass.getConstructor(Class.class, Class.class,
-                    boolean.class, MessageAdaptor.class, WireType.class);
+                    boolean.class, MessageAdaptor.class, WireType.class, MessageAdaptor.class, long.class);
             return (WriteMarshallable) declaredConstructor.newInstance(topicType, elementType,
-                    acknowledgement, messageAdaptor, wireType);
+                    acknowledgement, syncMessageAdaptor, wireType, sourceMessageAdaptor, nextIndexRequired);
 
         } catch (Exception e) {
             @NotNull IllegalStateException licence = new IllegalStateException("A Chronicle Queue Enterprise licence is" +
@@ -245,19 +254,19 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
             if (mapView0 != null)
                 return mapView0;
 
-            this.mapView = new QueueViewAsMapView<T, M>(this, context, asset);
+            this.mapView = new QueueViewAsMapView<>(this, context, asset);
             return this.mapView;
         }
 
     }
 
-    @Nullable
+    @NotNull
     public RollingChronicleQueue chronicleQueue() {
         return chronicleQueue;
     }
 
     public void replication(@NotNull RequestContext context, @NotNull Asset asset) {
-        @Nullable final HostIdentifier hostIdentifier;
+        final HostIdentifier hostIdentifier;
 
         try {
             hostIdentifier = asset.findOrCreateView(HostIdentifier.class);
@@ -266,6 +275,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
                 Jvm.debug().on(getClass(), "replication not enabled " + anfe.getMessage());
             return;
         }
+        assert hostIdentifier != null;
 
         final int remoteSourceIdentifier = queueConfig.sourceHostId(context.fullName());
         isSource = hostIdentifier.hostId() == remoteSourceIdentifier;
@@ -295,47 +305,51 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
 
         // if true - each replication event sends back an enableAcknowledgment
         final boolean acknowledgement = queueConfig.acknowledgment();
-        final MessageAdaptor messageAdaptor = queueConfig.bytesFunction();
+        final MessageAdaptor messageAdaptor = queueConfig.syncMessageAdaptor();
+        final MessageAdaptor sourceMessageAdaptor = queueConfig.sourceMessageAdaptor();
 
-        for (@NotNull EngineHostDetails hostDetails : engineCluster.hostDetails()) {
+        if (isSource) {
+            for (@NotNull EngineHostDetails hostDetails : engineCluster.hostDetails()) {
 
-            // its the identifier with the larger values that will establish the connection
-            byte remoteIdentifier = (byte) hostDetails.hostId();
+                // its the identifier with the larger values that will establish the connection
+                byte remoteIdentifier = (byte) hostDetails.hostId();
 
-            if (remoteIdentifier == localIdentifier)
-                continue;
+                if (remoteIdentifier == localIdentifier)
+                    continue;
 
-            engineCluster.findConnectionManager(remoteIdentifier).addListener((nc, isConnected) -> {
 
-                if (!isConnected)
+                ConnectionManager connectionManager = engineCluster.findConnectionManager(remoteIdentifier);
+                if (connectionManager == null) {
+                    engineCluster.findConnectionManager(remoteIdentifier);
+                    Jvm.warn().on(getClass(), "NOT FOUND -> remoteIdentifier=" + remoteIdentifier);
                     return;
+                }
 
-                if (nc.isAcceptor())
-                    return;
+                connectionManager.addListener((nc, isConnected) -> {
 
-                final boolean isSource0 = (remoteIdentifier == remoteSourceIdentifier);
+                    if (!isConnected)
+                        return;
 
-                @NotNull WriteMarshallable h = isSource0 ?
+                    long index = chronicleQueue.createTailer().toEnd().index();
+                    @NotNull WriteMarshallable h = newSync(
+                            context.topicType(),
+                            context.elementType(),
+                            acknowledgement,
+                            messageAdaptor,
+                            chronicleQueue.wireType(),
+                            sourceMessageAdaptor,
+                            index);
 
-                        newSource(chronicleQueue.createTailer().toEnd().index(), context.topicType(),
-                                context.elementType(),
-                                acknowledgement,
-                                messageAdaptor) :
+                    long cid = nc.newCid();
+                    nc.wireOutPublisher().publish(w -> w.writeDocument(true, d ->
+                            d.writeEventName(CoreFields.csp).text(csp)
+                                    .writeEventName(CoreFields.cid).int64(cid)
+                                    .writeEventName(CoreFields.handler).typedMarshallable(h)));
 
-                        newSync(context.topicType(),
-                                context.elementType(),
-                                acknowledgement,
-                                messageAdaptor,
-                                chronicleQueue.wireType());
-
-                long cid = nc.newCid();
-                nc.wireOutPublisher().publish(w -> w.writeDocument(true, d ->
-                        d.writeEventName(CoreFields.csp).text(csp)
-                                .writeEventName(CoreFields.cid).int64(cid)
-                                .writeEventName(CoreFields.handler).typedMarshallable(h)));
-
-            });
+                });
+            }
         }
+
     }
 
     @NotNull
@@ -408,10 +422,10 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         return mapView().longSize();
     }
 
-    @NotNull
+    @Nullable
     @Override
     public M getAndPut(T key, M value) {
-        return getAndPut(key, value);
+        return mapView().getAndPut(key, value);
     }
 
     @Nullable
@@ -452,9 +466,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         if (wireType != BINARY && wireType != DEFAULT_ZERO_BINARY)
             throw new IllegalArgumentException("Currently the chronicle queue only supports Binary and Default Zero Binary Wire");
 
-        RollingChronicleQueue chronicleQueue;
-
-        @Nullable File baseFilePath;
+        @NotNull File baseFilePath;
         if (basePath == null)
             baseFilePath = new File(defaultPath, "");
         else
@@ -477,11 +489,6 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         return threadLocal.get().tailer;
     }
 
-    @NotNull
-    private ExcerptAppender threadLocalAppender() {
-        return threadLocal.get().appender;
-    }
-
     @Nullable
     public Tailer<T, M> tailer() {
         @NotNull final ExcerptTailer tailer = ChronicleQueueView.this.chronicleQueue.createTailer();
@@ -495,17 +502,17 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
             if (!dc.isPresent())
                 return null;
             final Wire wire = dc.wire();
-            long pos = wire.bytes().readPosition();
             final T topic = wire.readEvent(messageTypeClass);
             @NotNull final ValueIn valueIn = wire.getValueIn();
             if (Bytes.class.isAssignableFrom(elementTypeClass)) {
                 valueIn.text(excerpt.text());
+
             } else {
                 @Nullable final M message = valueIn.object(elementTypeClass);
                 excerpt.message(message);
             }
             return excerpt
-                    .topic(topic)
+                    .topic(topic == null ? "" : topic)
                     .index(excerptTailer.index());
         }
     }
@@ -529,8 +536,12 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         try (DocumentContext dc = excerptTailer.readingDocument()) {
             if (!dc.isPresent())
                 return null;
-            final StringBuilder topic = Wires.acquireStringBuilder();
-            @Nullable final M message = dc.wire().readEventName(topic).object(elementTypeClass);
+            final StringBuilder topic = SBP.acquireStringBuilder();
+            topic.setLength(0);
+            ValueIn valueIn = dc.wire().readEventName(topic);
+            if (topic.length() == 0)
+                valueIn = dc.wire().getValueIn();
+            @Nullable final M message = valueIn.object(elementTypeClass);
 
             return threadLocalData.excerpt
                     .message(message)
@@ -550,8 +561,16 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
             try (DocumentContext dc = excerptTailer.readingDocument()) {
                 if (!dc.isPresent())
                     return null;
-                final StringBuilder t = Wires.acquireStringBuilder();
+                final StringBuilder t = SBP.acquireStringBuilder();
+                t.setLength(0);
                 @NotNull final ValueIn valueIn = dc.wire().readEventName(t);
+
+                if (t.length() == 0) {
+                    return threadLocalData.excerpt
+                            .message(dc.wire().getValueIn().object(elementTypeClass))
+                            .topic(null)
+                            .index(excerptTailer.index());
+                }
 
                 @Nullable final T topic1 = convertTo(messageTypeClass, t);
 
@@ -593,13 +612,14 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         });
     }
 
+    @Override
     public long publishAndIndex(@NotNull T topic, @NotNull M message) {
 
         if (isReplicating && !isSource)
             throw new IllegalStateException("You can not publish to a sink used in replication, " +
                     "you have to publish to the source");
 
-        @NotNull final ExcerptAppender excerptAppender = threadLocalAppender();
+        @NotNull final ExcerptAppender excerptAppender = this.chronicleQueue.acquireAppender();
 
         try (final DocumentContext dc = excerptAppender.writingDocument()) {
             dc.wire().writeEvent(messageTypeClass, topic).object(elementTypeClass, message);
@@ -611,7 +631,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         if (isReplicating && !isSource)
             throw new IllegalStateException("You can not publish to a sink used in replication, " +
                     "you have to publish to the source");
-        @NotNull final ExcerptAppender excerptAppender = threadLocalAppender();
+        @NotNull final ExcerptAppender excerptAppender = this.chronicleQueue.acquireAppender();
         excerptAppender.writeDocument(w -> w.writeEventName(() -> "").object(event));
         return excerptAppender.lastIndexAppended();
     }
@@ -651,6 +671,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         mapView().putAll(m);
     }
 
+    @Override
     public void clear() {
         chronicleQueue.clear();
         mapView().clear();
@@ -666,6 +687,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         throw new UnsupportedOperationException("todo");
     }
 
+    @Override
     public void close() {
 
         @NotNull File file = chronicleQueue.file();
@@ -678,13 +700,6 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
                 Jvm.debug().on(getClass(), "Unable to delete " + file, e);
             }
         }
-    }
-
-    private void deleteFiles(TopicPublisher p) {
-
-        if (p instanceof QueueTopicPublisher)
-            deleteFiles((ChronicleQueueView) ((QueueTopicPublisher) p).underlying());
-
     }
 
     @Override
@@ -810,6 +825,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
             index(wireIn.read(() -> "index").int64());
         }
 
+        @Override
         public void clear() {
             message = null;
             topic = null;
@@ -960,8 +976,6 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
     class ThreadLocalData {
 
         @NotNull
-        final ExcerptAppender appender;
-        @NotNull
         final ExcerptTailer tailer;
         @NotNull
         final ExcerptTailer replayTailer;
@@ -969,8 +983,6 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         final LocalExcept excerpt;
 
         ThreadLocalData(@NotNull ChronicleQueue chronicleQueue) {
-            appender = chronicleQueue.acquireAppender();
-            appender.padToCacheAlign(net.openhft.chronicle.wire.MarshallableOut.Padding.ALWAYS);
             tailer = chronicleQueue.createTailer();
 
             replayTailer = chronicleQueue.createTailer();

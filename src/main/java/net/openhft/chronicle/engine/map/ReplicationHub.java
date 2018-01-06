@@ -43,11 +43,11 @@ import java.util.function.Function;
 
 import static net.openhft.chronicle.engine.server.internal.ReplicationHandler2.EventId.*;
 
-/**
+/*
  * Created by Rob Austin
  */
 class ReplicationHub extends AbstractStatelessClient {
-    private static final Logger LOG = LoggerFactory.getLogger(ChronicleMapKeyValueStore.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ReplicationHub.class);
     final ThreadLocal<VanillaReplicatedEntry> vre = ThreadLocal.withInitial(VanillaReplicatedEntry::new);
     @NotNull
     private final EventLoop eventLoop;
@@ -180,12 +180,8 @@ class ReplicationHub extends AbstractStatelessClient {
 
                                       if (LOG.isInfoEnabled()) {
                                           long delay = System.currentTimeMillis() - replicatedEntry.timestamp();
-                                          if (delay > 100) {
+                                          if (delay > 100)
                                               LOG.info("Rcv Clt latency=" + delay + "ms\t");
-                                              if (count++ % 10 == 0) {
-                                                  LOG.info("");
-                                              }
-                                          }
                                       }
 
                                       replication.applyReplication(replicatedEntry);
@@ -331,6 +327,7 @@ class ReplicationHub extends AbstractStatelessClient {
                     wireOut.writeEventName(replicationEvent).typedMarshallable(e));
         }
 
+        @Override
         @NotNull
         public HandlerPriority priority() {
             return HandlerPriority.REPLICATION;

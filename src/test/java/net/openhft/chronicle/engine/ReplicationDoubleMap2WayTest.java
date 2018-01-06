@@ -21,6 +21,7 @@ import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.OS;
 import net.openhft.chronicle.core.onoes.ExceptionKey;
 import net.openhft.chronicle.core.pool.ClassAliasPool;
+import net.openhft.chronicle.core.threads.EventLoop;
 import net.openhft.chronicle.core.threads.ThreadDump;
 import net.openhft.chronicle.engine.api.EngineReplication;
 import net.openhft.chronicle.engine.api.map.KeyValueStore;
@@ -35,6 +36,7 @@ import net.openhft.chronicle.engine.server.ServerEndpoint;
 import net.openhft.chronicle.engine.tree.VanillaAssetTree;
 import net.openhft.chronicle.network.TCPRegistry;
 import net.openhft.chronicle.network.connection.TcpChannelHub;
+import net.openhft.chronicle.queue.impl.single.StoreComponentReferenceHandler;
 import net.openhft.chronicle.wire.WireType;
 import net.openhft.chronicle.wire.YamlLogging;
 import org.jetbrains.annotations.NotNull;
@@ -50,10 +52,6 @@ import java.util.concurrent.ConcurrentMap;
 
 import static org.junit.Assert.assertNotNull;
 
-/**
- * Created by Rob Austin
- */
-
 public class ReplicationDoubleMap2WayTest {
     public static final WireType WIRE_TYPE = WireType.TEXT;
 
@@ -66,12 +64,21 @@ public class ReplicationDoubleMap2WayTest {
     @NotNull
     @Rule
     public TestName testName = new TestName();
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
     public String name;
     private ThreadDump threadDump;
 
-    @BeforeClass
-    public static void before() throws IOException {
+    @Before
+    public void before() throws IOException {
         exceptions = Jvm.recordExceptions();
+        exceptions.clear();
+        threadDump = new ThreadDump();
+        threadDump.ignore("tree-1/Heartbeat");
+        threadDump.ignore("tree-2/Heartbeat");
+        threadDump.ignore("process reaper");
+        threadDump.ignore("tree-1/closer");
+        threadDump.ignore(StoreComponentReferenceHandler.THREAD_NAME);
         YamlLogging.setAll(false);
 
         ClassAliasPool.CLASS_ALIASES.addAlias(ChronicleMapGroupFS.class);
@@ -86,39 +93,43 @@ public class ReplicationDoubleMap2WayTest {
         tree1 = create(1, writeType, "clusterTwo");
         tree2 = create(2, writeType, "clusterTwo");
 
-        serverEndpoint1 = new ServerEndpoint("host.port1", tree1);
-        serverEndpoint2 = new ServerEndpoint("host.port2", tree2);
+        serverEndpoint1 = hooks.addCloseable(new ServerEndpoint("host.port1", tree1, "cluster"));
+        serverEndpoint2 = hooks.addCloseable(new ServerEndpoint("host.port2", tree2, "cluster"));
     }
 
-    @AfterClass
-    public static void after() {
-        if (serverEndpoint1 != null)
-            serverEndpoint1.close();
-        if (serverEndpoint2 != null)
-            serverEndpoint2.close();
-
-        if (tree1 != null)
-            tree1.close();
-        if (tree2 != null)
-            tree2.close();
-
-        TcpChannelHub.closeAllHubs();
-        TCPRegistry.reset();
-        if (!exceptions.isEmpty()) {
+    @After
+    public void after() {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();
             Assert.fail();
         }
 
-        // TODO TCPRegistery.assertAllServersStopped();
+        if (serverEndpoint1 != null)
+            serverEndpoint1.close();
+        if (serverEndpoint2 != null)
+            serverEndpoint2.close();
+
+        try {
+            tree1.close();
+            tree2.close();
+
+            tree1.root().findView(EventLoop.class).awaitTermination();
+            tree2.root().findView(EventLoop.class).awaitTermination();
+        } catch (RuntimeException e) {
+            System.err.println("Error while closing trees: " + e.getMessage());
+        }
+
+        TcpChannelHub.closeAllHubs();
+        TCPRegistry.reset();
 
     }
 
     @NotNull
-    private static AssetTree create(final int hostId, WireType writeType, final String clusterTwo) {
-        @NotNull AssetTree tree = new VanillaAssetTree((byte) hostId)
-                .forTesting()
-                .withConfig(resourcesDir() + "/2way", OS.TARGET + "/" + hostId);
+    private AssetTree create(final int hostId, WireType writeType, final String clusterTwo) {
+        @NotNull AssetTree tree = hooks.addCloseable(new VanillaAssetTree((byte) hostId)
+                .forTesting(false)
+                .withConfig(resourcesDir() + "/2way", OS.TARGET + "/" + hostId));
 
         tree.root().addWrappingRule(MapView.class, "map directly to KeyValueStore",
                 VanillaMapView::new,
@@ -148,17 +159,7 @@ public class ReplicationDoubleMap2WayTest {
         Files.deleteIfExists(Paths.get(OS.TARGET, name.toString()));
     }
 
-    @Before
-    public void threadDump() {
-        threadDump = new ThreadDump();
-    }
-
-    @After
-    public void checkThreadDump() {
-        threadDump.assertNoNewThreads();
-    }
-
-    @Ignore
+    //@Ignore
     @Test
     public void testBootstrap() throws InterruptedException {
 

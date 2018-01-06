@@ -32,6 +32,7 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -43,13 +44,14 @@ import static net.openhft.chronicle.engine.api.tree.RequestContext.requestContex
 import static org.easymock.EasyMock.*;
 import static org.junit.Assert.*;
 
-/**
- * Created by peter on 22/05/15.
+/*
+ * Created by Peter Lawrey on 22/05/15.
  */
 public class ChassisTest {
 
     private ThreadDump threadDump;
-
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
     @Before
     public void threadDump() {
         threadDump = new ThreadDump();
@@ -62,6 +64,7 @@ public class ChassisTest {
     @Before
     public void setUp() {
         resetChassis();
+        hooks.addCloseable(Chassis.assetTree());
     }
 
     @Test

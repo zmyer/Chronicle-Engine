@@ -30,6 +30,7 @@ import net.openhft.chronicle.engine.map.InsertedEvent;
 import net.openhft.chronicle.engine.map.RemovedEvent;
 import net.openhft.chronicle.engine.map.UpdatedEvent;
 import net.openhft.chronicle.engine.map.remote.*;
+import net.openhft.chronicle.network.ConnectionStrategy;
 import net.openhft.chronicle.network.VanillaSessionDetails;
 import net.openhft.chronicle.network.connection.ClientConnectionMonitor;
 import net.openhft.chronicle.network.connection.FatalFailureConnectionStrategy;
@@ -43,8 +44,8 @@ import java.util.function.Consumer;
 
 import static net.openhft.chronicle.core.pool.ClassAliasPool.CLASS_ALIASES;
 
-/**
- * Created by peter on 22/05/15.
+/*
+ * Created by Peter Lawrey on 22/05/15.
  */
 public class VanillaAssetTree implements AssetTree {
     static {
@@ -66,17 +67,32 @@ public class VanillaAssetTree implements AssetTree {
 
     @NotNull
     final VanillaAsset root;
+    private String region;
+    private String clusterName;
 
     public VanillaAssetTree() {
-        this("");
-    }
-
-    public VanillaAssetTree(@Nullable String name) {
-        root = new VanillaAsset(null, name == null ? "" : name);
+        this(new VanillaAssetRuleProvider());
     }
 
     public VanillaAssetTree(int hostId) {
-        this();
+        this(hostId, new VanillaAssetRuleProvider());
+    }
+
+    public VanillaAssetTree(@Nullable String name) {
+        this(name, new VanillaAssetRuleProvider());
+    }
+
+
+    public VanillaAssetTree(AssetRuleProvider ruleProvider) {
+        this("", ruleProvider);
+    }
+
+    public VanillaAssetTree(@Nullable String name, AssetRuleProvider ruleProvider) {
+        root = new VanillaAsset(null, name == null ? "" : name, ruleProvider);
+    }
+
+    public VanillaAssetTree(int hostId, AssetRuleProvider ruleProvider) {
+        this(ruleProvider);
         root.addView(HostIdentifier.class, new HostIdentifier((byte) hostId));
     }
 
@@ -112,7 +128,7 @@ public class VanillaAssetTree implements AssetTree {
     public VanillaAssetTree forServer(boolean daemon, boolean binding) {
         @Nullable final HostIdentifier view = root.getView(HostIdentifier.class);
         final int hostId = view == null ? 1 : view.hostId();
-        root.forServer(daemon, (String uri) -> VanillaAsset.master(uri, hostId), binding);
+        root.forServer(daemon, (String uri) -> VanillaAsset.master(uri, hostId));
         return this;
     }
 
@@ -145,11 +161,27 @@ public class VanillaAssetTree implements AssetTree {
     public VanillaAssetTree forRemoteAccess(@NotNull String[] hostPortDescription,
                                             @NotNull WireType wire,
                                             @Nullable ClientConnectionMonitor clientConnectionMonitor) {
+        return forRemoteAccess(hostPortDescription, wire, clientConnectionMonitor, new FatalFailureConnectionStrategy(3));
+    }
 
+    /**
+     * creates an asset tree that connects to a remote server via tcp/ip
+     *
+     * @param hostPortDescription     the primary host and other failover hosts
+     * @param wire                    the type of wire
+     * @param clientConnectionMonitor used to monitor client failover
+     * @param connectionStrategy      connection strategy
+     * @return an instance of VanillaAssetTree
+     */
+    @NotNull
+    public VanillaAssetTree forRemoteAccess(@NotNull String[] hostPortDescription,
+                                            @NotNull WireType wire,
+                                            @Nullable ClientConnectionMonitor clientConnectionMonitor,
+                                            @NotNull final ConnectionStrategy connectionStrategy) {
         if (clientConnectionMonitor != null)
             root.viewMap.put(ClientConnectionMonitor.class, clientConnectionMonitor);
 
-        root.forRemoteAccess(hostPortDescription, wire, clientSession(), clientConnectionMonitor, new FatalFailureConnectionStrategy(3));
+        root.forRemoteAccess(hostPortDescription, wire, clientSession(), clientConnectionMonitor, connectionStrategy);
         return this;
     }
 
@@ -219,4 +251,24 @@ public class VanillaAssetTree implements AssetTree {
     public VanillaAssetTree forRemoteAccess(String serverAddress, @NotNull WireType wireType, Consumer<Throwable> t) {
         return forRemoteAccess(serverAddress, wireType);
     }
+
+    @SuppressWarnings("UnusedReturnValue")
+    public VanillaAssetTree region(String region) {
+        this.region = region;
+        return this;
+    }
+
+    public String region() {
+        return region;
+    }
+
+    public String clusterName() {
+        return clusterName;
+    }
+
+    public void clusterName(String clusterName) {
+        this.clusterName = clusterName;
+    }
+
+
 }

@@ -22,28 +22,18 @@ import net.openhft.chronicle.core.io.Closeable;
 import net.openhft.chronicle.core.threads.EventLoop;
 import net.openhft.chronicle.core.threads.HandlerPriority;
 import net.openhft.chronicle.core.util.ThrowingConsumer;
-import net.openhft.chronicle.engine.api.collection.ValuesCollection;
-import net.openhft.chronicle.engine.api.column.*;
+import net.openhft.chronicle.engine.api.PermissionDeniedException;
+import net.openhft.chronicle.engine.api.column.ColumnView;
 import net.openhft.chronicle.engine.api.map.KeyValueStore;
 import net.openhft.chronicle.engine.api.map.MapView;
-import net.openhft.chronicle.engine.api.map.SubscriptionKeyValueStore;
-import net.openhft.chronicle.engine.api.pubsub.*;
-import net.openhft.chronicle.engine.api.query.IndexQueueView;
+import net.openhft.chronicle.engine.api.pubsub.SubscriptionCollection;
 import net.openhft.chronicle.engine.api.query.ObjectCacheFactory;
-import net.openhft.chronicle.engine.api.query.VanillaIndexQueueView;
 import net.openhft.chronicle.engine.api.query.VanillaObjectCacheFactory;
-import net.openhft.chronicle.engine.api.set.EntrySetView;
-import net.openhft.chronicle.engine.api.set.KeySetView;
 import net.openhft.chronicle.engine.api.tree.*;
-import net.openhft.chronicle.engine.collection.VanillaValuesCollection;
 import net.openhft.chronicle.engine.map.*;
-import net.openhft.chronicle.engine.map.remote.*;
-import net.openhft.chronicle.engine.pubsub.*;
+import net.openhft.chronicle.engine.map.remote.RemoteTopologySubscription;
 import net.openhft.chronicle.engine.query.QueueConfig;
-import net.openhft.chronicle.engine.queue.QueueWrappingColumnView;
 import net.openhft.chronicle.engine.session.VanillaSessionProvider;
-import net.openhft.chronicle.engine.set.RemoteKeySetView;
-import net.openhft.chronicle.engine.set.VanillaKeySetView;
 import net.openhft.chronicle.network.ClientSessionProvider;
 import net.openhft.chronicle.network.ConnectionStrategy;
 import net.openhft.chronicle.network.VanillaSessionDetails;
@@ -56,8 +46,6 @@ import net.openhft.chronicle.threads.Threads;
 import net.openhft.chronicle.wire.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Comparator;
 import java.util.Map;
@@ -68,14 +56,14 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 
-/**
- * Created by peter on 22/05/15.
+/*
+ * Created by Peter Lawrey on 22/05/15.
  */
+@SuppressWarnings("unchecked")
 public class VanillaAsset implements Asset, Closeable {
 
     public static final Comparator<Class> CLASS_COMPARATOR = Comparator.comparing(Class::getName);
     public static final String LAST = "{last}";
-    private static final Logger LOG = LoggerFactory.getLogger(VanillaAsset.class);
     private static final BiPredicate<RequestContext, Asset> ALWAYS = (rc, asset) -> true;
     final Map<Class, Object> viewMap = new ConcurrentSkipListMap<>(CLASS_COMPARATOR);
     final ConcurrentMap<String, Asset> children = new ConcurrentSkipListMap<>();
@@ -89,16 +77,16 @@ public class VanillaAsset implements Asset, Closeable {
     private String fullName = null;
     private Boolean keyedAsset;
 
-    public VanillaAsset(Asset asset, @NotNull String name) {
+    @NotNull
+    private AssetRuleProvider ruleProvider;
+
+    public VanillaAsset(Asset asset, @NotNull String name, @NotNull AssetRuleProvider ruleProvider) {
         this.parent = asset;
         this.name = name;
+        this.ruleProvider = ruleProvider;
 
-        if ("".equals(name)) {
-            assert parent == null;
-        } else {
-//            assert parent != null;
-            assert name != null;
-        }
+        assert !"".equals(name) || parent == null;
+
         if (parent != null) {
             @Nullable TopologySubscription parentSubs = parent.findView(TopologySubscription.class);
             if (parentSubs != null && !(parentSubs instanceof RemoteTopologySubscription))
@@ -106,98 +94,12 @@ public class VanillaAsset implements Asset, Closeable {
         }
     }
 
-    void configMapCommon() {
-        addWrappingRule(ValuesCollection.class, LAST + " values", VanillaValuesCollection::new, MapView.class);
-        addView(SubAssetFactory.class, new VanillaSubAssetFactory());
+    @NotNull
+    public AssetRuleProvider getRuleProvider() {
+        return ruleProvider;
     }
 
-    public void configMapServer() {
-        configMapCommon();
-        addWrappingRule(EntrySetView.class, LAST + " VanillaEntrySetView", VanillaEntrySetView::new, MapView.class);
-        addWrappingRule(KeySetView.class, LAST + " VanillaKeySetView", VanillaKeySetView::new, MapView.class);
-        addWrappingRule(Reference.class, LAST + "reference", MapReference::new, MapView.class);
-        addWrappingRule(Replication.class, LAST + "replication", VanillaReplication::new, MapView.class);
-        addWrappingRule(Publisher.class, LAST + " MapReference", MapReference::new, MapView.class);
-        addWrappingRule(TopicPublisher.class, LAST + " MapTopicPublisher", MapTopicPublisher::new, MapView.class);
-        addWrappingRule(MapView.class, LAST + " VanillaMapView", VanillaMapView::new, ObjectKeyValueStore.class);
-        addWrappingRule(MapColumnView.class, LAST + "Map ColumnView", MapWrappingColumnView::new,
-                MapView.class);
-
-        // storage options
-        addLeafRule(ObjectSubscription.class, LAST + " vanilla", MapKVSSubscription::new);
-        addLeafRule(RawKVSSubscription.class, LAST + " vanilla", MapKVSSubscription::new);
-        addWrappingRule(ObjectKeyValueStore.class, LAST + " VanillaSubscriptionKeyValueStore",
-                VanillaSubscriptionKeyValueStore::new, AuthenticatedKeyValueStore.class);
-
-        addLeafRule(AuthenticatedKeyValueStore.class, LAST + " VanillaKeyValueStore", VanillaKeyValueStore::new);
-        addLeafRule(SubscriptionKeyValueStore.class, LAST + " VanillaKeyValueStore", VanillaKeyValueStore::new);
-        addLeafRule(KeyValueStore.class, LAST + " VanillaKeyValueStore", VanillaKeyValueStore::new);
-        addLeafRule(VaadinChart.class, LAST + " VaadinChart", VanillaVaadinChart::new);
-    }
-
-    public void configMapRemote() {
-        configMapCommon();
-        addWrappingRule(SimpleSubscription.class, LAST + "subscriber", RemoteSimpleSubscription::new, Reference.class);
-
-        addWrappingRule(EntrySetView.class, LAST + " RemoteEntrySetView", RemoteEntrySetView::new, MapView.class);
-        addWrappingRule(KeySetView.class, LAST + " RemoteKeySetView", RemoteKeySetView::new, MapView.class);
-        addLeafRule(Publisher.class, LAST + " RemotePublisher", RemotePublisher::new);
-        addLeafRule(Reference.class, LAST + "reference", RemoteReference::new);
-        addLeafRule(TopicPublisher.class, LAST + " RemoteTopicPublisher", RemoteTopicPublisher::new);
-
-        addWrappingRule(MapView.class, LAST + " RemoteMapView", RemoteMapView::new, ObjectKeyValueStore.class);
-
-        addLeafRule(ObjectKeyValueStore.class, LAST + " RemoteKeyValueStore",
-                RemoteKeyValueStore::new);
-        addLeafRule(ObjectSubscription.class, LAST + " Remote", RemoteKVSSubscription::new);
-        addLeafRule(VaadinChart.class, LAST + " VanillaKeyValueStore", RemoteVaadinChart::new);
-    }
-
-    public void configColumnViewRemote() {
-        addLeafRule(ColumnView.class, LAST + " Remote", RemoteColumnView::new);
-        addLeafRule(MapColumnView.class, LAST + " Remote", RemoteColumnView::new);
-        addLeafRule(QueueColumnView.class, LAST + " Remote", RemoteColumnView::new);
-    }
-
-    void configQueueCommon() {
-        addWrappingRule(Reference.class, LAST + "QueueReference",
-                QueueReference::new, QueueView.class);
-    }
-
-    public void configQueueServer() {
-        configQueueCommon();
-        addWrappingRule(Publisher.class, LAST + " QueueReference",
-                QueueReference::new, QueueView.class);
-
-        addWrappingRule(TopicPublisher.class, LAST + " QueueTopicPublisher",
-                QueueTopicPublisher::new, QueueView.class);
-
-        addLeafRule(ObjectSubscription.class, LAST + " QueueObjectSubscription",
-                QueueObjectSubscription::new);
-
-        addWrappingRule(IndexQueueView.class, LAST + " VanillaIndexQueueView",
-                VanillaIndexQueueView::new, QueueView.class);
-
-        addLeafRule(QueueView.class, LAST + " ChronicleQueueView", ChronicleQueueView::create);
-
-        addWrappingRule(QueueColumnView.class, LAST + "Queue ColumnView",
-                QueueWrappingColumnView::new, QueueView.class);
-    }
-
-    /**
-     * the wrapping rules for the connector of the TCP/IP connection
-     */
-    public void configQueueRemote() {
-        configQueueCommon();
-        addLeafRule(QueueView.class, LAST + " RemoteQueueView", RemoteQueueView::new);
-
-        addLeafRule(IndexQueueView.class, LAST + " RemoteIndexQueueView",
-                RemoteIndexQueueView::new);
-    }
-
-    public void standardStack(boolean daemon, boolean binding) {
-        configMapCommon();
-
+    private void standardStack(boolean daemon) {
         @NotNull String fullName = fullName();
         @Nullable HostIdentifier hostIdentifier = findView(HostIdentifier.class);
         if (hostIdentifier != null)
@@ -220,7 +122,7 @@ public class VanillaAsset implements Asset, Closeable {
 
     @Deprecated
     public void forServer() {
-        forServer(true, s -> master(s, 1), false);
+        forServer(true, s -> master(s, 1));
     }
 
     @Nullable
@@ -230,37 +132,14 @@ public class VanillaAsset implements Asset, Closeable {
             if (split.length > 5) {
                 try {
                     return Integer.valueOf(split[4]);
-                } catch (NumberFormatException e) {
-                    return defaultMaster;
+                } catch (NumberFormatException ignored) {
                 }
             }
         }
         return defaultMaster;
     }
 
-    public void forServer(boolean daemon,
-                          @NotNull final Function<String, Integer> uriToHostId,
-                          boolean binding) {
-        standardStack(daemon, binding);
-
-        configMapServer();
-
-        @NotNull VanillaAsset queue = (VanillaAsset) acquireAsset("/queue");
-        queue.configQueueServer();
-
-        @NotNull VanillaAsset clusterConnections = (VanillaAsset) acquireAsset(
-                "/proc/connections/cluster/throughput");
-
-        clusterConnections.configQueueServer();
-
-        addView(QueueConfig.class, new QueueConfig(uriToHostId, true, null, WireType.BINARY));
-
-        addView(ObjectCacheFactory.class, VanillaObjectCacheFactory.INSTANCE);
-
-        addLeafRule(TopologySubscription.class, LAST + " VanillaTopologySubscription",
-                VanillaTopologySubscription::new);
-
-    }
+    private final ThreadLocal<StringBuilder> sbTl = ThreadLocal.withInitial(StringBuilder::new);
 
 
     public void forRemoteAccess(@NotNull String[] hostPortDescriptions,
@@ -269,14 +148,12 @@ public class VanillaAsset implements Asset, Closeable {
                                 @Nullable ClientConnectionMonitor clientConnectionMonitor,
                                 @NotNull final ConnectionStrategy connectionStrategy) throws AssetNotFoundException {
 
-        standardStack(true, false);
-        configMapRemote();
-        configColumnViewRemote();
+        standardStack(true);
+        ruleProvider.configMapRemote(this);
+        ruleProvider.configColumnViewRemote(this);
 
         @NotNull VanillaAsset queue = (VanillaAsset) acquireAsset("queue");
-        queue.configQueueRemote();
-
-        //       addLeafRule(Subscriber.class, LAST + " topic publisher", RemoteSubscription::new);
+        ruleProvider.configQueueRemote(queue);
 
         addLeafRule(TopologySubscription.class, LAST + " RemoteTopologySubscription",
                 RemoteTopologySubscription::new);
@@ -284,6 +161,7 @@ public class VanillaAsset implements Asset, Closeable {
         @NotNull SessionProvider sessionProvider = new ClientSessionProvider(sessionDetails);
 
         @Nullable EventLoop eventLoop = findOrCreateView(EventLoop.class);
+        assert eventLoop != null;
         eventLoop.start();
         if (getView(TcpChannelHub.class) == null) {
 
@@ -374,7 +252,7 @@ public class VanillaAsset implements Asset, Closeable {
     @Override
     @ForceInline
     public <V> V getView(@NotNull Class<V> viewType) {
-        @NotNull @SuppressWarnings("unchecked")
+        @Nullable @SuppressWarnings("unchecked")
         V view = (V) viewMap.get(viewType);
         return view;
     }
@@ -388,7 +266,7 @@ public class VanillaAsset implements Asset, Closeable {
 
     @NotNull
     @Override
-    public String fullName() {
+    public synchronized String fullName() {
         if (fullName == null)
             fullName = Asset.super.fullName();
         return fullName;
@@ -540,9 +418,34 @@ public class VanillaAsset implements Asset, Closeable {
         return parent;
     }
 
+    public void forServer(boolean daemon, @NotNull final Function<String, Integer> uriToHostId) {
+
+        standardStack(daemon);
+
+        ruleProvider.configMapCommon(this);
+        ruleProvider.configMapServer(this);
+
+        @NotNull VanillaAsset queue = (VanillaAsset) acquireAsset("/queue");
+        ruleProvider.configQueueServer(queue);
+
+        @NotNull VanillaAsset clusterConnections = (VanillaAsset) acquireAsset(
+                "/proc/connections/cluster/throughput");
+
+        ruleProvider.configQueueServer(clusterConnections);
+
+        addView(QueueConfig.class, new QueueConfig(uriToHostId, true, null, WireType.BINARY));
+
+        addView(ObjectCacheFactory.class, VanillaObjectCacheFactory.INSTANCE);
+
+        addLeafRule(TopologySubscription.class, LAST + " VanillaTopologySubscription",
+                VanillaTopologySubscription::new);
+
+    }
+
     @NotNull
     @Override
     public Asset acquireAsset(@NotNull String childName) {
+
         if ("/".contentEquals(childName))
             return root();
 
@@ -559,6 +462,36 @@ public class VanillaAsset implements Asset, Closeable {
             }
         }
         return getAssetOrANFE(childName);
+
+    }
+
+    private synchronized void checkAllowedToCreateAsset(@NotNull String childName) {
+        final StringBuilder sb = sbTl.get();
+        sb.setLength(0);
+        sb.append("/");
+
+        appendWithoutSlash(fullName(), sb);
+        appendWithoutSlash(childName, sb);
+
+        if (!ruleProvider.canCreateAsset(sb))
+            throw new PermissionDeniedException("path=" + sb);
+    }
+
+    private void appendWithoutSlash(@Nullable String str, StringBuilder sb0) {
+        if (str == null)
+            return;
+
+        int end = str.length();
+        if (str.endsWith("/"))
+            end--;
+
+        int start = (str.startsWith("/")) ? Math.min(1, end) : 0;
+
+        if (end <= start)
+            return;
+
+        sb0.append(str.subSequence(start, end));
+        sb0.append("/");
     }
 
     @Override
@@ -566,7 +499,7 @@ public class VanillaAsset implements Asset, Closeable {
         return leafViewMap.containsKey(viewType) || wrappingViewFactoryMap.containsKey(viewType);
     }
 
-    @Nullable
+    @NotNull
     private Asset getAssetOrANFE(@NotNull String name) throws AssetNotFoundException {
         @Nullable Asset asset = children.get(name);
         if (asset == null) {
@@ -579,24 +512,25 @@ public class VanillaAsset implements Asset, Closeable {
 
     @Nullable
     protected Asset createAsset(@NotNull String name) {
-        if (name.length() == 0)
-            System.out.println("");
+        checkAllowedToCreateAsset(name);
         assert name.length() > 0;
         return children.computeIfAbsent(name, keyedAsset != Boolean.TRUE
-                ? n -> new VanillaAsset(this, name)
+                ? n -> new VanillaAsset(this, name, ruleProvider)
                 : n -> {
-            @Nullable MapView map = getView(MapView.class);
 
+            @Nullable SubAssetFactory saFactory = findOrCreateView(SubAssetFactory.class);
+            assert saFactory != null;
+
+            @Nullable MapView map = getView(MapView.class);
             if (map != null) {
-                @Nullable SubAssetFactory saFactory = findOrCreateView(SubAssetFactory.class);
                 return saFactory.createSubAsset(this, name, map.valueType());
             }
 
-            @Nullable SubAssetFactory saFactory = findOrCreateView(SubAssetFactory.class);
             return saFactory.createSubAsset(this, name, String.class);
         });
     }
 
+    @Nullable
     @Override
     public Asset getChild(String name) {
         return children.get(name);

@@ -186,7 +186,7 @@ public interface AssetTree extends Closeable {
     }
 
     @NotNull
-    default <T, E> TopicPublisher<T, E> acquireTopicPublisher(@NotNull String uri, File baseDir,
+    default <T, E> TopicPublisher<T, E> acquireTopicPublisher(@NotNull String uri, @NotNull File baseDir,
                                                               Class<T> topicClass, Class<E> messageClass)
             throws AssetNotFoundException {
         return acquireTopicPublisher(uri, baseDir.getAbsolutePath(), topicClass, messageClass);
@@ -262,7 +262,7 @@ public interface AssetTree extends Closeable {
         kvsSubscription.registerTopicSubscriber(rc, subscriber);
     }
 
-    default <T, E> void registerTopicSubscriber(@NotNull String uri, File baseFile, Class<T> topicClass,
+    default <T, E> void registerTopicSubscriber(@NotNull String uri, @NotNull File baseFile, Class<T> topicClass,
                                                 Class<E> messageClass, @NotNull TopicSubscriber<T, E> subscriber)
             throws AssetNotFoundException {
         registerTopicSubscriber(uri, baseFile.getAbsolutePath(), topicClass, messageClass, subscriber);
@@ -396,6 +396,7 @@ public interface AssetTree extends Closeable {
         return this;
     }
 
+    @NotNull
     AssetTreeStats getUsageStats();
 
     @NotNull
@@ -412,8 +413,7 @@ public interface AssetTree extends Closeable {
     }
 
     @NotNull
-    default <T, M> QueueView<T, M> acquireQueue(@NotNull String uri, Class<T> typeClass, Class<M>
-            messageClass, final String cluster, String basePath) {
+    default <T, M> QueueView<T, M> acquireQueue(@NotNull String uri, Class<T> typeClass, Class<M> messageClass, final String cluster, String basePath) {
 
         @NotNull final RequestContext requestContext = requestContext(uri).basePath(basePath);
 
@@ -426,17 +426,9 @@ public interface AssetTree extends Closeable {
     }
 
     @NotNull
-    default <T, M> QueueView<T, M> acquireQueue(@NotNull String uri, String basePath, Class<T> typeClass,
-                                                Class<M> messageClass, final String cluster) {
-
-        @NotNull final RequestContext requestContext = requestContext(uri).basePath(basePath);
-
-        if (requestContext.bootstrap() != null)
-            throw new UnsupportedOperationException("Its not possible to set the bootstrap when " +
-                    "acquiring a queue");
-
-        return acquireView(requestContext.view("queue").type(typeClass).type2(messageClass)
-                .cluster(cluster));
+    @Deprecated
+    default <T, M> QueueView<T, M> acquireQueue(@NotNull String uri, String basePath, Class<T> typeClass, Class<M> messageClass, final String cluster) {
+        return acquireQueue(uri, typeClass, messageClass, cluster, basePath);
     }
 
 }

@@ -26,8 +26,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * Created by peter on 23/08/15.
+/*
+ * Created by Peter Lawrey on 23/08/15.
  */
 public class LoggingVirtualFileSystem extends ForwardingFileSystem {
     private final VirtualFileSystem delegate;

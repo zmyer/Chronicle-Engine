@@ -23,8 +23,8 @@ import net.openhft.chronicle.wire.WireOut;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Created by peter on 17/08/15.
+/*
+ * Created by Peter Lawrey on 17/08/15.
  */
 public class Price implements Marshallable {
     @Nullable

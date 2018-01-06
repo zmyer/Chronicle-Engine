@@ -28,19 +28,19 @@ public class GenericTypesToString implements TypeToString {
                     Class<?> c = m.getParameterTypes()[0];
                     Class old = cache1.put(m.getName().intern(), c);
                     if (old != null) {
-                        throw new IllegalStateException("name=" + m.getName() + " is alread " +
-                                "assosiated with " + old + ", " +
-                                "you cant " +
-                                "re-assosisiate it with " + c.getSimpleName());
+                        throw new IllegalStateException("name=" + m.getName() + " is already " +
+                                "associated with " + old + ", " +
+                                "you can't " +
+                                "re-associate it with " + c.getSimpleName());
                     }
 
                     String oldName = cache2.put(c, m.getName());
 
                     if (oldName != null) {
-                        throw new IllegalStateException("name=" + c.getSimpleName() + " is alread " +
-                                "assosiated with " + oldName + ", " +
-                                "you cant " +
-                                "re-assosisiate it with " + m.getName());
+                        throw new IllegalStateException("name=" + c.getSimpleName() + " is already " +
+                                "associated with " + oldName + ", " +
+                                "you can't " +
+                                "re-associate it with " + m.getName());
                     }
 
                 }

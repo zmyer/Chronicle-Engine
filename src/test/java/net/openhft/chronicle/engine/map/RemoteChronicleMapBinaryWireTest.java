@@ -19,6 +19,7 @@ package net.openhft.chronicle.engine.map;
 
 import net.openhft.chronicle.core.io.Closeable;
 import net.openhft.chronicle.core.threads.EventLoop;
+import net.openhft.chronicle.engine.ShutdownHooks;
 import net.openhft.chronicle.engine.api.map.MapView;
 import net.openhft.chronicle.engine.api.tree.AssetTree;
 import net.openhft.chronicle.engine.map.MapClientTest.RemoteMapSupplier;
@@ -51,10 +52,12 @@ import static org.junit.Assert.*;
 public class RemoteChronicleMapBinaryWireTest extends JSR166TestCase {
 
     @NotNull
-    private final AssetTree assetTree = new VanillaAssetTree();
-    @NotNull
     @Rule
     public TestName name = new TestName();
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
+    @NotNull
+    private final AssetTree assetTree = hooks.addCloseable(new VanillaAssetTree());
 
     @Before
     public void before() {
@@ -85,6 +88,7 @@ public class RemoteChronicleMapBinaryWireTest extends JSR166TestCase {
     }
 
 
+    @Override
     public void preAfter() {
         TCPRegistry.reset();
         Closeable.closeQuietly(assetTree);
@@ -710,6 +714,7 @@ public class RemoteChronicleMapBinaryWireTest extends JSR166TestCase {
             this.value = value;
         }
 
+        @Override
         public int compareTo(@NotNull BI other) {
             return Integer.compare(value, other.value);
         }
@@ -742,6 +747,7 @@ public class RemoteChronicleMapBinaryWireTest extends JSR166TestCase {
             this.value = value;
         }
 
+        @Override
         public int compareTo(@NotNull BS other) {
             return value.compareTo(other.value);
         }
@@ -769,6 +775,7 @@ public class RemoteChronicleMapBinaryWireTest extends JSR166TestCase {
             super(Collections.singleton(e));
         }
 
+        @Override
         public int compareTo(@NotNull LexicographicList<E> other) {
             long start = System.currentTimeMillis();
             int common = Math.min(size(), other.size());

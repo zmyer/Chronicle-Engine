@@ -25,7 +25,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-/**
+/*
  * Created by andre on 01/05/2015.
  */
 public class BinaryWireMain {
@@ -36,7 +36,7 @@ public class BinaryWireMain {
         int port = 9090;
         // YamlLogging.setAll(true);
         @NotNull VanillaAssetTree assetTree = new VanillaAssetTree().forTesting(false);
-        @NotNull final ServerEndpoint serverEndpoint = new ServerEndpoint("*:" + port, assetTree);
+        @NotNull final ServerEndpoint serverEndpoint = new ServerEndpoint("*:" + port, assetTree, "cluster");
 
         if (args.length == 1 && args[0].compareTo("-debug") == 0) {
             System.out.println("Enabling message logging");

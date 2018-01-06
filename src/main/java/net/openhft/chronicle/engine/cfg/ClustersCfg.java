@@ -24,11 +24,11 @@ import net.openhft.chronicle.wire.WireIn;
 import net.openhft.chronicle.wire.WireOut;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Created by peter on 26/08/15.
+/*
+ * Created by Peter Lawrey on 26/08/15.
  */
 public class ClustersCfg extends AbstractMarshallable implements Installable {
-    final Clusters clusters = new Clusters();
+   public final Clusters clusters = new Clusters();
 
     @NotNull
     @Override

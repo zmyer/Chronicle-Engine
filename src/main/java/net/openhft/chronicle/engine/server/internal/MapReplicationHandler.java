@@ -42,7 +42,7 @@ import static java.lang.ThreadLocal.withInitial;
 import static net.openhft.chronicle.engine.server.internal.MapReplicationHandler.EventId.replicationEvent;
 import static net.openhft.chronicle.network.connection.CoreFields.lastUpdateTime;
 
-/**
+/*
  * Created by Rob Austin
  */
 public class MapReplicationHandler extends AbstractSubHandler<EngineWireNetworkContext> implements
@@ -174,6 +174,7 @@ public class MapReplicationHandler extends AbstractSubHandler<EngineWireNetworkC
             this.params = params;
         }
 
+        @Override
         @NotNull
         public <P extends WireKey> P[] params() {
             //noinspection unchecked

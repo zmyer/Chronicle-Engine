@@ -20,6 +20,7 @@ package net.openhft.chronicle.engine.redis;
 import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.onoes.ExceptionKey;
 import net.openhft.chronicle.core.threads.ThreadDump;
+import net.openhft.chronicle.engine.ShutdownHooks;
 import net.openhft.chronicle.engine.api.map.MapView;
 import net.openhft.chronicle.engine.api.tree.AssetTree;
 import net.openhft.chronicle.engine.server.ServerEndpoint;
@@ -39,7 +40,7 @@ import java.util.function.Consumer;
 import static net.openhft.chronicle.engine.redis.RedisEmulator.*;
 import static org.junit.Assert.assertEquals;
 
-/**
+/*
  * Created by daniel on 31/07/2015.
  */
 public class RedisEmulatorTest {
@@ -50,6 +51,9 @@ public class RedisEmulatorTest {
     private static ThreadDump threadDump;
     private static AssetTree serverAssetTree;
     private static AssetTree clientAssetTree;
+
+    private static final ShutdownHooks HOOKS = new ShutdownHooks();
+
     private Map<ExceptionKey, Integer> exceptions;
 
     @BeforeClass
@@ -58,7 +62,7 @@ public class RedisEmulatorTest {
 //        YamlLogging.showServerReads(true);
         //For this test we can use a VanillaMapKeyValueStore
         //To test with a ChronicleMapKeyValueStore uncomment lines below
-        serverAssetTree = new VanillaAssetTree().forTesting();
+        serverAssetTree = HOOKS.addCloseable(new VanillaAssetTree().forTesting());
 //        serverAssetTree.root().addWrappingRule(MapView.class, "map directly to KeyValueStore",
 //                VanillaMapView::new, KeyValueStore.class);
 //        serverAssetTree.root().addLeafRule(KeyValueStore.class, "use Chronicle Map", (context, asset) ->
@@ -66,7 +70,7 @@ public class RedisEmulatorTest {
         TCPRegistry.createServerSocketChannelFor("RemoteSubscriptionModelPerformanceTest.port");
 
         @NotNull ServerEndpoint serverEndpoint = new ServerEndpoint("RemoteSubscriptionModelPerformanceTest.port",
-                serverAssetTree);
+                serverAssetTree, "cluster");
         clientAssetTree = new VanillaAssetTree()
                 .forRemoteAccess("RemoteSubscriptionModelPerformanceTest.port", WireType.TEXT);
 
@@ -77,6 +81,7 @@ public class RedisEmulatorTest {
 
     @AfterClass
     public static void down() {
+        HOOKS.close();
         serverAssetTree.close();
         clientAssetTree.close();
 
@@ -92,7 +97,7 @@ public class RedisEmulatorTest {
 
     @After
     public void afterMethod() {
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Assert.fail();
         }

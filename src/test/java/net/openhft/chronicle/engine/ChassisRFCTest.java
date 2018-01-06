@@ -24,6 +24,7 @@ import net.openhft.chronicle.engine.api.pubsub.*;
 import org.jetbrains.annotations.NotNull;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -33,13 +34,14 @@ import java.util.Map;
 import static net.openhft.chronicle.engine.Chassis.*;
 import static org.junit.Assert.assertEquals;
 
-/**
- * Created by peter on 22/05/15.
+/*
+ * Created by Peter Lawrey on 22/05/15.
  */
 public class ChassisRFCTest {
 
     private ThreadDump threadDump;
-
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
     @Before
     public void threadDump() {
         threadDump = new ThreadDump();
@@ -52,6 +54,7 @@ public class ChassisRFCTest {
     @Before
     public void setUpTest() {
         Chassis.resetChassis();
+        hooks.addCloseable(Chassis.assetTree());
     }
 
     @Test

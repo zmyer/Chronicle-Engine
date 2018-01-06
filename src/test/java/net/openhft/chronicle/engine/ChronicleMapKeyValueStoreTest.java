@@ -53,7 +53,7 @@ import java.util.function.Function;
 
 import static net.openhft.chronicle.engine.api.tree.RequestContext.requestContext;
 
-/**
+/*
  * Created by daniel on 28/05/15.
  */
 public class ChronicleMapKeyValueStoreTest {
@@ -82,7 +82,7 @@ public class ChronicleMapKeyValueStoreTest {
         tree2.close();
         tree3.close();
 
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Assert.fail();
         }

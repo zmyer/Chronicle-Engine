@@ -30,8 +30,8 @@ import net.openhft.chronicle.engine.tree.QueueView;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Created by peter on 23/05/15.
+/*
+ * Created by Peter Lawrey on 23/05/15.
  */
 public class QueueTopicPublisher<T, M> implements TopicPublisher<T, M>, Assetted<QueueView<T, M>> {
     private final Class<T> tClass;

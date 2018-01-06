@@ -4,6 +4,7 @@ import net.openhft.chronicle.engine.api.tree.Asset;
 import net.openhft.chronicle.engine.api.tree.AssetTree;
 import net.openhft.chronicle.engine.api.tree.RequestContext;
 import net.openhft.chronicle.engine.query.QueueConfig;
+import net.openhft.chronicle.engine.tree.AssetRuleProvider;
 import net.openhft.chronicle.engine.tree.MessageAdaptor;
 import net.openhft.chronicle.engine.tree.VanillaAsset;
 import net.openhft.chronicle.wire.AbstractMarshallableCfg;
@@ -22,12 +23,18 @@ import static net.openhft.chronicle.engine.api.tree.RequestContext.requestContex
 public class QueueCfg extends AbstractMarshallableCfg implements Installable {
 
     private int masterId = 1;
+    @Nullable
     private String basePath = null;
+    @NotNull
     private Class topicClass = String.class;
+    @NotNull
     private Class messageClass = String.class;
     private boolean acknowledgment = false;
+    @Nullable
     private MessageAdaptor messageAdaptor = null;
+    @NotNull
     private WireType wireType = WireType.BINARY;
+    @NotNull
     private String cluster = "";
 
     @Nullable
@@ -42,7 +49,8 @@ public class QueueCfg extends AbstractMarshallableCfg implements Installable {
 
         final Function<String, Integer> queueSource = s -> s.equals(uriPath) ? masterId : 1;
         final Asset asset = assetTree.acquireAsset(uriPath);
-        ((VanillaAsset) asset).configQueueServer();
+        AssetRuleProvider ruleProvider = ((VanillaAsset) assetTree.root()).getRuleProvider();
+        ruleProvider.configQueueServer((VanillaAsset) asset);
         final QueueConfig qc = asset.getView(QueueConfig.class);
 
         if (qc == null)

@@ -39,8 +39,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
-/**
- * Created by peter on 29/05/15.
+/*
+ * Created by Peter Lawrey on 29/05/15.
  */
 public class QueueSimpleSubscription<E> implements SimpleSubscription<E> {
 

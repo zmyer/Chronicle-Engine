@@ -22,8 +22,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
 
-/**
- * Created by peter on 22/05/15.
+/*
+ * Created by Peter Lawrey on 22/05/15.
  */
 public class ExistingAssetEvent extends AbstractMarshallable implements TopologicalEvent {
     private String assetName;
@@ -52,6 +52,7 @@ public class ExistingAssetEvent extends AbstractMarshallable implements Topologi
         return assetName;
     }
 
+    @Override
     public String name() {
         return name;
     }

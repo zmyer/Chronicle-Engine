@@ -18,17 +18,20 @@
 package net.openhft.chronicle.engine.map;
 
 import net.openhft.chronicle.bytes.Bytes;
+import net.openhft.chronicle.bytes.BytesUtil;
 
 import java.nio.ByteBuffer;
 
-/**
- * Created by peter on 25/05/15.
+/*
+ * Created by Peter Lawrey on 25/05/15.
  */
 public class Buffers {
     static final ThreadLocal<Buffers> BUFFERS = ThreadLocal.withInitial(Buffers::new);
-    final Bytes<ByteBuffer> keyBuffer = Bytes.elasticByteBuffer();
+    final Bytes<ByteBuffer> keyBuffer = Bytes.elasticHeapByteBuffer(64);
     final Bytes<ByteBuffer> valueBuffer = Bytes.elasticByteBuffer();
 
     private Buffers() {
+        // TODO Fix?
+        assert BytesUtil.unregister(valueBuffer);
     }
 }

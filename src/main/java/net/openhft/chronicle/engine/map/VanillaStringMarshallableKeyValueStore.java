@@ -42,8 +42,8 @@ import java.util.function.Function;
 
 import static net.openhft.chronicle.engine.map.Buffers.BUFFERS;
 
-/**
- * Created by peter on 25/05/15.
+/*
+ * Created by Peter Lawrey on 25/05/15.
  */
 public class VanillaStringMarshallableKeyValueStore<V extends Marshallable> implements StringMarshallableKeyValueStore<V> {
 
@@ -107,7 +107,7 @@ public class VanillaStringMarshallableKeyValueStore<V extends Marshallable> impl
         if (type == String.class)
             return (t, bytes) -> (T) (bytes == null ? null : bytes.toString());
         if (Marshallable.class.isAssignableFrom(type))
-            return (bytes,   t) -> {
+            return (bytes, t) -> {
                 if (bytes == null)
                     return null;
 

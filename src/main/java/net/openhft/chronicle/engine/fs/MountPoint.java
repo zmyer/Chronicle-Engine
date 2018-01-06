@@ -20,8 +20,8 @@ package net.openhft.chronicle.engine.fs;
 import net.openhft.chronicle.engine.api.tree.AssetTree;
 import net.openhft.chronicle.wire.Marshallable;
 
-/**
- * Created by peter on 12/06/15.
+/*
+ * Created by Peter Lawrey on 12/06/15.
  */
 public interface MountPoint extends Marshallable {
     String spec();

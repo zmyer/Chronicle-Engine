@@ -22,8 +22,8 @@ import net.openhft.chronicle.wire.WireIn;
 import net.openhft.chronicle.wire.WireOut;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Created by peter on 07/07/15.
+/*
+ * Created by Peter Lawrey on 07/07/15.
  */
 public class KeyValuePair implements Marshallable {
     Object key;

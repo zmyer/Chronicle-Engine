@@ -20,8 +20,8 @@ package net.openhft.chronicle.engine.eg;
 import net.openhft.chronicle.core.util.SerializableBiFunction;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Created by peter on 17/08/15.
+/*
+ * Created by Peter Lawrey on 17/08/15.
  */
 public enum PriceUpdater implements SerializableBiFunction<Price, Object, Price> {
     SET_BID_PRICE {

@@ -18,13 +18,19 @@
 package net.openhft.chronicle.engine.server.internal;
 
 import net.openhft.chronicle.core.annotation.UsedViaReflection;
+import net.openhft.chronicle.core.threads.EventLoop;
 import net.openhft.chronicle.engine.api.map.MapView;
 import net.openhft.chronicle.engine.api.tree.Asset;
 import net.openhft.chronicle.engine.cfg.EngineClusterContext;
+import net.openhft.chronicle.engine.fs.Clusters;
+import net.openhft.chronicle.engine.fs.EngineCluster;
+import net.openhft.chronicle.engine.tree.HostIdentifier;
 import net.openhft.chronicle.engine.tree.VanillaAsset;
 import net.openhft.chronicle.network.*;
 import net.openhft.chronicle.network.api.TcpHandler;
+import net.openhft.chronicle.network.cluster.Cluster;
 import net.openhft.chronicle.network.cluster.ClusterContext;
+import net.openhft.chronicle.network.cluster.ClusteredNetworkContext;
 import net.openhft.chronicle.wire.AbstractMarshallable;
 import net.openhft.chronicle.wire.Demarshallable;
 import net.openhft.chronicle.wire.WireIn;
@@ -42,14 +48,14 @@ import static net.openhft.chronicle.engine.server.internal.EngineWireNetworkCont
  * @author Rob Austin.
  */
 public class EngineWireNetworkContext<T extends EngineWireNetworkContext>
-        extends VanillaNetworkContext<T> {
+        extends VanillaNetworkContext<T> implements ClusteredNetworkContext<T> {
 
     static final Logger LOG = LoggerFactory.getLogger(EngineWireNetworkContext.class);
     private static final String PROC_CONNECTIONS_CLUSTER = "/proc/connections/cluster/";
     private static final String CONNECTIVITY_URI = PROC_CONNECTIONS_CLUSTER + "connectivity";
     private static final String CONNECTIVITY_HOSTS_URI = PROC_CONNECTIONS_CLUSTER + "hosts";
 
-    private Asset rootAsset;
+    private VanillaAsset rootAsset;
     private MapView<ConnectionDetails, ConnectionEvent> hostByConnectionStatus;
     private MapView<String, ConnectionStatus> connectivityHosts;
     private TcpHandler handler;
@@ -58,21 +64,21 @@ public class EngineWireNetworkContext<T extends EngineWireNetworkContext>
         return handler;
     }
 
-    public EngineWireNetworkContext(@NotNull Asset asset) {
-        this.rootAsset = asset.root();
+    public EngineWireNetworkContext(@NotNull Asset asset, String clusterName) {
+        this.rootAsset = (VanillaAsset) asset.root();
         // TODO make configurable
         serverThreadingStrategy(ServerThreadingStrategy.CONCURRENT);
-        ((VanillaAsset) rootAsset.acquireAsset("/proc")).configMapServer();
+        rootAsset.getRuleProvider().configMapServer((VanillaAsset) rootAsset.acquireAsset("/proc"));
 
         hostByConnectionStatus = rootAsset.root().acquireMap(
                 CONNECTIVITY_URI,
                 ConnectionDetails.class,
-                ConnectionEvent.class);
+                ConnectionEvent.class, clusterName);
 
         connectivityHosts = rootAsset.root().acquireMap(
                 CONNECTIVITY_HOSTS_URI,
                 String.class,
-                ConnectionStatus.class);
+                ConnectionStatus.class, clusterName);
     }
 
     @NotNull
@@ -83,6 +89,29 @@ public class EngineWireNetworkContext<T extends EngineWireNetworkContext>
     @Override
     public void onHandlerChanged(TcpHandler handler) {
         this.handler = handler;
+    }
+
+    @Override
+    public EventLoop eventLoop() {
+        return rootAsset.findOrCreateView(EventLoop.class);
+    }
+
+    @Override
+    public byte getLocalHostIdentifier() {
+        return HostIdentifier.localIdentifier(rootAsset);
+    }
+
+    @Override
+    public Cluster getCluster(final String clusterName) {
+        @Nullable final Clusters clusters = rootAsset.findView(Clusters.class);
+        return clusters.get(clusterName);
+    }
+
+    @Override
+    public boolean isValidCluster(final String clusterName) {
+        @Nullable final Clusters clusters = rootAsset.findView(Clusters.class);
+        final EngineCluster engineCluster = clusters.get(clusterName);
+        return engineCluster != null;
     }
 
     @Nullable
@@ -207,7 +236,7 @@ public class EngineWireNetworkContext<T extends EngineWireNetworkContext>
         @NotNull
         @Override
         public NetworkContext apply(@NotNull ClusterContext context) {
-            return new EngineWireNetworkContext<>(((EngineClusterContext) context).assetRoot());
+            return new EngineWireNetworkContext<>(((EngineClusterContext) context).assetRoot(), context.clusterName());
         }
     }
 }

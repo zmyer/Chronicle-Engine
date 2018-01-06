@@ -53,7 +53,7 @@ import java.util.concurrent.ConcurrentMap;
 
 import static org.junit.Assert.assertNotNull;
 
-/**
+/*
  * Created by Rob Austin
  */
 
@@ -101,7 +101,7 @@ public class MaunualReplication2WayTest {
         @NotNull WireType writeType = WireType.TEXT;
         tree1 = create((isHost1() ? 1 : 2), writeType, "clusterTwo");
 
-        serverEndpoint1 = new ServerEndpoint("*:8081", tree1);
+        serverEndpoint1 = new ServerEndpoint("*:8081", tree1, "cluster");
 
     }
 
@@ -114,7 +114,7 @@ public class MaunualReplication2WayTest {
 
         TcpChannelHub.closeAllHubs();
         TCPRegistry.reset();
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();
             Assert.fail();

@@ -50,10 +50,6 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentMap;
 
-/**
- * Created by Rob Austin
- */
-
 public class Main2Way {
     public static final WireType WIRE_TYPE = WireType.COMPRESSED_BINARY;
     public static final int entries = 1000;
@@ -83,10 +79,10 @@ public class Main2Way {
 
         if ("one".equals(System.getProperty("server", "one"))) {
             tree1 = create(1, writeType, "clusterThree");
-            serverEndpoint1 = new ServerEndpoint("localhost:8081", tree1);
+            serverEndpoint1 = new ServerEndpoint("localhost:8081", tree1, "cluster");
         } else {
             tree2 = create(2, writeType, "clusterThree");
-            serverEndpoint2 = new ServerEndpoint("localhost:8082", tree2);
+            serverEndpoint2 = new ServerEndpoint("localhost:8082", tree2, "cluster");
         }
     }
 
@@ -106,7 +102,7 @@ public class Main2Way {
         TcpChannelHub.closeAllHubs();
         TCPRegistry.reset();
 
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();
             Assert.fail();

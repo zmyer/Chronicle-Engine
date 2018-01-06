@@ -53,25 +53,18 @@ import java.util.concurrent.ConcurrentMap;
 
 import static org.junit.Assert.assertNotNull;
 
-/**
- * Created by Rob Austin
- */
-
-@Ignore("fails in teamcity")
 @RunWith(value = Parameterized.class)
 public class  Replication3WayIntIntTest extends ThreadMonitoringTest {
     public static final WireType WIRE_TYPE = WireType.TEXT;
     public static final int NUMBER_OF_TIMES = 10;
-
-    static {
-        //System.setProperty("ReplicationHandler3", "true");
-    }
 
     public ServerEndpoint serverEndpoint1;
     public ServerEndpoint serverEndpoint2;
     @NotNull
     @Rule
     public TestName testName = new TestName();
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
     public String name;
     private ServerEndpoint serverEndpoint3;
     private AssetTree tree1;
@@ -117,15 +110,16 @@ public class  Replication3WayIntIntTest extends ThreadMonitoringTest {
         tree2 = create(2, writeType, "clusterThree");
         tree3 = create(3, writeType, "clusterThree");
 
-        serverEndpoint1 = new ServerEndpoint("host.port1", tree1);
-        serverEndpoint2 = new ServerEndpoint("host.port2", tree2);
-        serverEndpoint3 = new ServerEndpoint("host.port3", tree3);
+        serverEndpoint1 = hooks.addCloseable(new ServerEndpoint("host.port1", tree1, "cluster"));
+        serverEndpoint2 = hooks.addCloseable(new ServerEndpoint("host.port2", tree2, "cluster"));
+        serverEndpoint3 = hooks.addCloseable(new ServerEndpoint("host.port3", tree3, "cluster"));
 
         name = testName.getMethodName();
 
         Files.deleteIfExists(Paths.get(OS.TARGET, name));
     }
 
+    @Override
     public void preAfter() {
         Closeable.closeQuietly(serverEndpoint1);
         Closeable.closeQuietly(serverEndpoint2);
@@ -134,7 +128,7 @@ public class  Replication3WayIntIntTest extends ThreadMonitoringTest {
         Closeable.closeQuietly(tree1);
         Closeable.closeQuietly(tree2);
         Closeable.closeQuietly(tree3);
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             // TODO FIX
             Assert.fail();
@@ -143,9 +137,9 @@ public class  Replication3WayIntIntTest extends ThreadMonitoringTest {
 
     @NotNull
     private AssetTree create(final int hostId, WireType writeType, final String clusterTwo) {
-        @NotNull AssetTree tree = new VanillaAssetTree((byte) hostId)
+        @NotNull AssetTree tree = hooks.addCloseable(new VanillaAssetTree((byte) hostId)
                 .forTesting()
-                .withConfig(resourcesDir() + "/3way", OS.TARGET + "/" + hostId);
+                .withConfig(resourcesDir() + "/3way", OS.TARGET + "/" + hostId));
 
         tree.root().addWrappingRule(MapView.class, "map directly to KeyValueStore",
                 VanillaMapView::new,
@@ -160,6 +154,7 @@ public class  Replication3WayIntIntTest extends ThreadMonitoringTest {
     }
 
     @Test
+    @Ignore("Flaky")
     public void testAllDataGetsReplicated() {
 
         name = "testAllDataGetsReplicated";
@@ -258,11 +253,9 @@ public class  Replication3WayIntIntTest extends ThreadMonitoringTest {
                         Jvm.pause(100);
                         continue Outer;
                     }
-
-                    assert true;
-                    return;
                 }
             }
+            return;
         }
 
         assert false;

@@ -34,8 +34,8 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.function.Function;
 
-/**
- * Created by peter on 29/05/15.
+/*
+ * Created by Peter Lawrey on 29/05/15.
  */
 public class MapSimpleSubscription<E> implements SimpleSubscription<E> {
 

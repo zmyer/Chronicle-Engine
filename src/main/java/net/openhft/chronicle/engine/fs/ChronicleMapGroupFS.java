@@ -26,8 +26,8 @@ import net.openhft.chronicle.wire.WireIn;
 import net.openhft.chronicle.wire.WireOut;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Created by peter on 12/06/15.
+/*
+ * Created by Peter Lawrey on 12/06/15.
  */
 @Deprecated
 public class ChronicleMapGroupFS implements Marshallable, MountPoint, LeafViewFactory<KeyValueStore> {

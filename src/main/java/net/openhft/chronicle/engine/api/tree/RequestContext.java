@@ -21,7 +21,6 @@ import net.openhft.chronicle.bytes.Bytes;
 import net.openhft.chronicle.bytes.BytesStore;
 import net.openhft.chronicle.core.pool.ClassAliasPool;
 import net.openhft.chronicle.core.pool.ClassLookup;
-import net.openhft.chronicle.engine.HeartbeatHandler;
 import net.openhft.chronicle.engine.api.collection.ValuesCollection;
 import net.openhft.chronicle.engine.api.column.ColumnView;
 import net.openhft.chronicle.engine.api.column.VaadinChart;
@@ -43,14 +42,16 @@ import net.openhft.chronicle.engine.query.Operation.OperationType;
 import net.openhft.chronicle.engine.server.internal.EngineNetworkStatsListener;
 import net.openhft.chronicle.engine.server.internal.EngineWireNetworkContext;
 import net.openhft.chronicle.engine.server.internal.MapReplicationHandler;
-import net.openhft.chronicle.engine.server.internal.UberHandler;
 import net.openhft.chronicle.engine.tree.QueueView;
 import net.openhft.chronicle.engine.tree.TopologicalEvent;
 import net.openhft.chronicle.engine.tree.TopologySubscription;
+import net.openhft.chronicle.engine.tree.VanillaAssetRuleProvider;
 import net.openhft.chronicle.network.TcpEventHandler;
 import net.openhft.chronicle.network.cluster.ClusterContext;
 import net.openhft.chronicle.network.cluster.HostIdConnectionStrategy;
 import net.openhft.chronicle.network.cluster.TerminatorHandler;
+import net.openhft.chronicle.network.cluster.handlers.HeartbeatHandler;
+import net.openhft.chronicle.network.cluster.handlers.UberHandler;
 import net.openhft.chronicle.wire.QueryWire;
 import net.openhft.chronicle.wire.VanillaWireParser;
 import net.openhft.chronicle.wire.WireParser;
@@ -60,8 +61,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Proxy;
 
-/**
- * Created by peter on 24/05/15.
+/*
+ * Created by Peter Lawrey on 24/05/15.
  */
 public class RequestContext implements Cloneable {
     public static final ClassLookup CLASS_ALIASES = ClassLookup.create();
@@ -128,7 +129,8 @@ public class RequestContext implements Cloneable {
                 InMemoryMapCfg.class,
                 FilePerKeyMapCfg.class,
                 ChronicleMapCfg.class,
-                MonitorCfg.class);
+                MonitorCfg.class,
+                VanillaAssetRuleProvider.class);
         return true;
     }
 
@@ -544,6 +546,7 @@ public class RequestContext implements Cloneable {
         return this;
     }
 
+    @Override
     @NotNull
     public RequestContext clone() {
         try {

@@ -31,8 +31,8 @@ import net.openhft.chronicle.wire.WireIn;
 import net.openhft.chronicle.wire.WireOut;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Created by peter on 12/06/15.
+/*
+ * Created by Peter Lawrey on 12/06/15.
  */
 @Deprecated
 public class ConfigurationFS implements MountPoint {
@@ -49,6 +49,7 @@ public class ConfigurationFS implements MountPoint {
         this.baseDir = baseDir;
     }
 
+    @Override
     public void install(String baseDir, @NotNull AssetTree assetTree) {
         @NotNull Asset asset = assetTree.acquireAsset(assetName);
 

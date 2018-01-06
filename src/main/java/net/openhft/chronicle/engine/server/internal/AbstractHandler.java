@@ -31,7 +31,7 @@ import static net.openhft.chronicle.network.connection.CoreFields.reply;
 import static net.openhft.chronicle.network.connection.WireOutPublisher.newThrottledWireOutPublisher;
 import static net.openhft.chronicle.wire.WriteMarshallable.EMPTY;
 
-/**
+/*
  * Created by Rob Austin
  */
 abstract class AbstractHandler {
@@ -44,27 +44,25 @@ abstract class AbstractHandler {
     long readPosAfterValueIn = -1;
     private boolean hasSkipped;
 
-    boolean startEnforceInValueReadCheck(WireIn w) {
+    boolean startEnforceInValueReadCheck(@NotNull WireIn w) {
         assert readPosAfterValueIn == -1;
         readPosAfterValueIn = w.bytes().readPosition();
         hasSkipped = false;
         return true;
     }
 
-    void skipValue(ValueIn valueIn) {
-        assert (hasSkipped = true) == true;
+    void skipValue(@NotNull ValueIn valueIn) {
+        assert hasSkipped = true;
         valueIn.skipValue();
     }
 
-    boolean endEnforceInValueReadCheck(WireIn w) {
+    boolean endEnforceInValueReadCheck(@NotNull WireIn w) {
 
         try {
             assert readPosAfterValueIn != -1;
 
-            if (hasSkipped)
-                return true;
+            return hasSkipped || w.bytes().readPosition() > readPosAfterValueIn;
 
-           return  w.bytes().readPosition() > readPosAfterValueIn;
         } finally {
             readPosAfterValueIn = -1;
         }

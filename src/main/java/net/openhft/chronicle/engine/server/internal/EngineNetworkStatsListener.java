@@ -38,6 +38,7 @@ import net.openhft.chronicle.network.WireNetworkStats;
 import net.openhft.chronicle.network.api.session.SessionDetailsProvider;
 import net.openhft.chronicle.network.cluster.AbstractSubHandler;
 import net.openhft.chronicle.network.cluster.ClusterContext;
+import net.openhft.chronicle.network.cluster.handlers.UberHandler;
 import net.openhft.chronicle.wire.Demarshallable;
 import net.openhft.chronicle.wire.WireIn;
 import net.openhft.chronicle.wire.WireType;
@@ -188,6 +189,7 @@ public class EngineNetworkStatsListener implements NetworkStatsListener<EngineWi
         return histogram;
     }
 
+    @NotNull
     private static ThreadLocal<SimpleDateFormat> HH_MM_SS = ThreadLocal.withInitial(() -> new
             SimpleDateFormat
             ("HH:mm.ss"));

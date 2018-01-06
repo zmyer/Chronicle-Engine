@@ -30,6 +30,7 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 
 import java.util.Map;
@@ -41,6 +42,8 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 public class RestartClosedPublisherTest {
     public static final WireType WIRE_TYPE = WireType.TEXT;
     private static final String CONNECTION_1 = "Test1.host.port";
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
     private ServerEndpoint _serverEndpoint1;
     private VanillaAssetTree _server;
     private VanillaAssetTree _remote;
@@ -60,7 +63,7 @@ public class RestartClosedPublisherTest {
     }
 
     public void afterMethod() {
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Assert.fail();
         }
@@ -71,9 +74,9 @@ public class RestartClosedPublisherTest {
         exceptions = Jvm.recordExceptions();
         TCPRegistry.createServerSocketChannelFor(CONNECTION_1);
         YamlLogging.setAll(false);
-        _server = new VanillaAssetTree().forServer();
+        _server = hooks.addCloseable(new VanillaAssetTree().forServer());
 
-        _serverEndpoint1 = new ServerEndpoint(CONNECTION_1, _server);
+        _serverEndpoint1 = hooks.addCloseable(new ServerEndpoint(CONNECTION_1, _server, "cluster"));
 
     }
 
@@ -86,7 +89,7 @@ public class RestartClosedPublisherTest {
 
         threadDump.assertNoNewThreads();
 
-        if (!exceptions.isEmpty()) {
+        if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Assert.fail();
         }

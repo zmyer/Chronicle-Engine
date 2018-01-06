@@ -28,8 +28,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-/**
- * Created by peter on 22/05/15.
+/*
+ * Created by Peter Lawrey on 22/05/15.
  */
 public class InsertedEvent<K, V> extends AbstractMarshallable implements MapEvent<K, V> {
     private boolean isReplicationEvent;
@@ -70,6 +70,7 @@ public class InsertedEvent<K, V> extends AbstractMarshallable implements MapEven
         return new InsertedEvent<>(assetName, keyFunction.apply(key, null), valueFunction.apply(value, null), isReplicationEvent);
     }
 
+    @Override
     @Nullable
     public K getKey() {
         return key;
@@ -81,6 +82,7 @@ public class InsertedEvent<K, V> extends AbstractMarshallable implements MapEven
         return null;
     }
 
+    @Override
     @Nullable
     public V getValue() {
         return value;

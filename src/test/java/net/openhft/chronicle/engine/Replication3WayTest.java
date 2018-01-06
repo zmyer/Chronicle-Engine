@@ -50,16 +50,8 @@ import java.util.concurrent.ConcurrentMap;
 
 import static org.junit.Assert.assertNotNull;
 
-/**
- * Created by Rob Austin
- */
-
 public class Replication3WayTest extends ThreadMonitoringTest {
     public static final WireType WIRE_TYPE = WireType.TEXT;
-
-    static {
-        //System.setProperty("ReplicationHandler3", "true");
-    }
 
     public ServerEndpoint serverEndpoint1;
     public ServerEndpoint serverEndpoint2;
@@ -67,6 +59,8 @@ public class Replication3WayTest extends ThreadMonitoringTest {
     @NotNull
     @Rule
     public TestName testName = new TestName();
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
     public String name;
     private AssetTree tree1;
     private AssetTree tree2;
@@ -99,19 +93,21 @@ public class Replication3WayTest extends ThreadMonitoringTest {
         tree2 = create(2, writeType, "clusterThree");
         tree3 = create(3, writeType, "clusterThree");
 
-        serverEndpoint1 = new ServerEndpoint("host.port1", tree1);
-        serverEndpoint2 = new ServerEndpoint("host.port2", tree2);
-        serverEndpoint3 = new ServerEndpoint("host.port3", tree3);
+        serverEndpoint1 = hooks.addCloseable(new ServerEndpoint("host.port1", tree1, "cluster"));
+        serverEndpoint2 = hooks.addCloseable(new ServerEndpoint("host.port2", tree2, "cluster"));
+        serverEndpoint3 = hooks.addCloseable(new ServerEndpoint("host.port3", tree3, "cluster"));
     }
 
+    @Override
     @Before
     public void threadDump() {
         threadDump = new ThreadDump();
     }
 
+    @Override
     @After
     public void preAfter() {
-  
+
         Closeable.closeQuietly(tree1);
         Closeable.closeQuietly(tree2);
         Closeable.closeQuietly(tree3);
@@ -119,13 +115,10 @@ public class Replication3WayTest extends ThreadMonitoringTest {
         Closeable.closeQuietly(serverEndpoint2);
         Closeable.closeQuietly(serverEndpoint3);
 
-
-
-
-
         TcpChannelHub.closeAllHubs();
         TCPRegistry.reset();
 
+        threadDump.ignore("queue-thread-local-cleaner-daemon");
         threadDump.ignore("tree-1/Heartbeat");
         threadDump.ignore("tree-2/Heartbeat");
         threadDump.ignore("tree-3/Heartbeat");
@@ -134,9 +127,9 @@ public class Replication3WayTest extends ThreadMonitoringTest {
 
     @NotNull
     private AssetTree create(final int hostId, WireType writeType, final String clusterTwo) {
-        @NotNull AssetTree tree = new VanillaAssetTree((byte) hostId)
+        @NotNull AssetTree tree = hooks.addCloseable(new VanillaAssetTree((byte) hostId)
                 .forTesting()
-                .withConfig(resourcesDir() + "/3way", OS.TARGET + "/" + hostId);
+                .withConfig(resourcesDir() + "/3way", OS.TARGET + "/" + hostId));
 
         tree.root().addWrappingRule(MapView.class, "map directly to KeyValueStore",
                 VanillaMapView::new,
@@ -185,7 +178,7 @@ public class Replication3WayTest extends ThreadMonitoringTest {
             Jvm.pause(300);
         }
 
-        for (@NotNull Map m : new Map[]{map1, map2}) {
+        for (@NotNull Map m : new Map[]{map1, map2, map3}) {
             Assert.assertEquals("world1", m.get("hello1"));
             Assert.assertEquals("world2", m.get("hello2"));
             Assert.assertEquals("world3", m.get("hello3"));

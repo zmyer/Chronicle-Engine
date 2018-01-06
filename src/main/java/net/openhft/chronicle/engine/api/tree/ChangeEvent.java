@@ -18,13 +18,16 @@
 package net.openhft.chronicle.engine.api.tree;
 
 import net.openhft.chronicle.wire.Marshallable;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * A super class for all change events.
  */
+@FunctionalInterface
 public interface ChangeEvent extends Marshallable {
     /**
      * @return The full name of the Asset which changed.
      */
+    @Nullable
     String assetName();
 }

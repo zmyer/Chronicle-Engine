@@ -47,15 +47,13 @@ import java.util.concurrent.ConcurrentMap;
 
 import static org.junit.Assert.assertNotNull;
 
-/**
- * Created by Rob Austin
- */
-@Ignore
 public class Replication3WayWithCompressionTest extends ThreadMonitoringTest {
 
     @NotNull
     @Rule
     public TestName testName = new TestName();
+    @Rule
+    public ShutdownHooks hooks = new ShutdownHooks();
     //   public static final String NAME = "/ChMaps/test";
     private ServerEndpoint serverEndpoint1;
     private ServerEndpoint serverEndpoint2;
@@ -78,7 +76,7 @@ public class Replication3WayWithCompressionTest extends ThreadMonitoringTest {
 
         name = testName.getMethodName();
 
-        Files.deleteIfExists(Paths.get(OS.TARGET, name.toString()));
+        Files.deleteIfExists(Paths.get(OS.TARGET, name));
 
         System.setProperty("ReplicationHandler3", "false");
         System.setProperty("EngineReplication.Compression", "gzip");
@@ -100,11 +98,12 @@ public class Replication3WayWithCompressionTest extends ThreadMonitoringTest {
         tree2 = create(2, writeType, "clusterThree");
         tree3 = create(3, writeType, "clusterThree");
 
-        serverEndpoint1 = new ServerEndpoint("host.port1", tree1);
-        serverEndpoint2 = new ServerEndpoint("host.port2", tree2);
-        serverEndpoint3 = new ServerEndpoint("host.port3", tree3);
+        serverEndpoint1 = hooks.addCloseable(new ServerEndpoint("host.port1", tree1, "cluster"));
+        serverEndpoint2 = hooks.addCloseable(new ServerEndpoint("host.port2", tree2, "cluster"));
+        serverEndpoint3 = hooks.addCloseable(new ServerEndpoint("host.port3", tree3, "cluster"));
     }
 
+    @Override
     public void preAfter() {
         if (serverEndpoint1 != null)
             serverEndpoint1.close();
@@ -123,9 +122,9 @@ public class Replication3WayWithCompressionTest extends ThreadMonitoringTest {
 
     @NotNull
     private AssetTree create(final int hostId, WireType writeType, final String clusterTwo) {
-        @NotNull AssetTree tree = new VanillaAssetTree((byte) hostId)
+        @NotNull AssetTree tree = hooks.addCloseable(new VanillaAssetTree((byte) hostId)
                 .forTesting()
-                .withConfig(resourcesDir() + "/3wayLegacy", OS.TARGET + "/" + hostId);
+                .withConfig(resourcesDir() + "/3way", OS.TARGET + "/" + hostId));
 
         tree.root().addWrappingRule(MapView.class, "map directly to KeyValueStore",
                 VanillaMapView::new,

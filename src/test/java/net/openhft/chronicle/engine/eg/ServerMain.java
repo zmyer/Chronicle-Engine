@@ -26,9 +26,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-/**
- * Created by peter on 17/08/15.
- */
 public class ServerMain {
     private static ServerEndpoint endpoint;
 
@@ -42,6 +39,6 @@ public class ServerMain {
         YamlLogging.showServerReads(true);
         YamlLogging.showServerWrites(true);
         @NotNull AssetTree serverTree = new VanillaAssetTree().forServer(false);
-        endpoint = new ServerEndpoint("localhost:9090", serverTree);
+        endpoint = new ServerEndpoint("localhost:9090", serverTree, "cluster");
     }
 }
