@@ -76,7 +76,7 @@ public class EngineInstance {
 
         @NotNull EngineCfg installable = (EngineCfg) yaml.readObject();
 
-        @NotNull final VanillaAssetTree tree = new VanillaAssetTree(hostId, installable.getRuleProvider()).forServer(false);
+        @NotNull final VanillaAssetTree tree = new VanillaAssetTree(hostId, installable.getRuleProvider()).forServer(true);
 
         if (region != null)
             tree.region(region);
@@ -101,7 +101,6 @@ public class EngineInstance {
         } catch (ClassNotFoundException e) {
             //my class isn't there!
         }
-
 
         try {
             installable.install("/", tree);
@@ -188,6 +187,5 @@ public class EngineInstance {
             return "";
         return clusters.firstCluster().clusterName();
     }
-
 
 }

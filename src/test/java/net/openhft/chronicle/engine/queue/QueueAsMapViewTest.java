@@ -33,16 +33,15 @@ import static net.openhft.chronicle.engine.Utils.methodName;
 /**
  * @author Rob Austin.
  */
+@Ignore("see https://github.com/OpenHFT/Chronicle-Engine/issues/32")
 @RunWith(value = Parameterized.class)
 public class QueueAsMapViewTest extends ThreadMonitoringTest {
-
 
     private static final String DELETE_CHRONICLE_FILE = "?dontPersist=true";
 
     static {
         ClassAliasPool.CLASS_ALIASES.addAlias(MyMarshallable.class, "MyMarshallable");
     }
-
 
     @NotNull
     @Rule
@@ -51,22 +50,13 @@ public class QueueAsMapViewTest extends ThreadMonitoringTest {
     public ShutdownHooks hooks = new ShutdownHooks();
     @NotNull
     String methodName = "";
+    @NotNull
+    String uri = "/queue/" + System.nanoTime() + "/" + methodName;
     private AssetTree assetTree;
     @Nullable
     private ServerEndpoint serverEndpoint;
     @Nullable
     private AssetTree serverAssetTree;
-
-    @NotNull
-    String uri = "/queue/" + System.nanoTime() + "/" + methodName;
-
-
-    @Parameterized.Parameters
-    public static Collection<Object[]> data() {
-        return Arrays.asList(new Boolean[][]{
-                {true}, {false}
-        });
-    }
 
     public QueueAsMapViewTest(Boolean isRemote) throws Exception {
 
@@ -88,6 +78,12 @@ public class QueueAsMapViewTest extends ThreadMonitoringTest {
 
     }
 
+    @Parameterized.Parameters
+    public static Collection<Object[]> data() {
+        return Arrays.asList(new Boolean[][]{
+                {true}, {false}
+        });
+    }
 
     public static void deleteFiles(@NotNull File element) {
         if (element.isDirectory()) {
@@ -182,8 +178,6 @@ public class QueueAsMapViewTest extends ThreadMonitoringTest {
 
         Assert.assertTrue(q.isEmpty());
 
-
     }
-
 
 }

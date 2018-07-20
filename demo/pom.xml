@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright 2016 higherfrequencytrading.com
+  ~ Copyright 2016 chronicle.software
   ~
   ~ Licensed under the *Apache License, Version 2.0* (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -37,7 +37,8 @@
 
             <dependency>
                 <groupId>net.openhft</groupId>
-                  <artifactId>third-party-bom</artifactId> <!-- PLEASE DON'T LEAVE THIS ON A SNAPSHOT because they get missed in a release  -->
+                <artifactId>third-party-bom
+                </artifactId> <!-- PLEASE DON'T LEAVE THIS ON A SNAPSHOT because they get missed in a release  -->
                 <type>pom</type>
                 <version>3.6.2</version>
                 <scope>import</scope>
@@ -46,7 +47,7 @@
             <dependency>
                 <groupId>net.openhft</groupId>
                 <artifactId>chronicle-bom</artifactId>
-                <version>1.15.102</version>
+                <version>1.16.84</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

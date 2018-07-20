@@ -34,7 +34,6 @@ import net.openhft.chronicle.engine.fs.Clusters;
 import net.openhft.chronicle.engine.fs.EngineHostDetails;
 import net.openhft.chronicle.engine.fs.FilePerKeyGroupFS;
 import net.openhft.chronicle.engine.server.ServerEndpoint;
-import net.openhft.chronicle.engine.tree.VanillaAsset;
 import net.openhft.chronicle.engine.tree.VanillaAssetTree;
 import net.openhft.chronicle.network.TCPRegistry;
 import net.openhft.chronicle.network.VanillaSessionDetails;
@@ -81,6 +80,35 @@ public class ReplicationTestBootstrappingAfterLostConnection {
     @Rule
     public ShutdownHooks hooks = new ShutdownHooks();
 
+    @NotNull
+    private static AssetTree create(final int hostId, WireType wireType, final String
+            clusterName) {
+        @NotNull AssetTree tree = new VanillaAssetTree((byte) hostId)
+                .forTesting(false)
+                .withConfig(resourcesDir() + "/cmkvst", OS.TARGET + "/" + hostId);
+
+        tree.root().addWrappingRule(MapView.class, "map directly to KeyValueStore",
+                VanillaMapView::new,
+                KeyValueStore.class);
+        tree.root().addLeafRule(EngineReplication.class, "Engine replication holder",
+                CMap2EngineReplicator::new);
+        tree.root().addLeafRule(KeyValueStore.class, "KVS is Chronicle Map", (context, asset) ->
+                new ChronicleMapKeyValueStore(context.wireType(wireType).cluster(clusterName),
+                        asset));
+
+        //  VanillaAssetTreeEgMain.registerTextViewofTree("host " + hostId, tree);
+
+        return tree;
+    }
+
+    @NotNull
+    public static String resourcesDir() {
+        String path = ChronicleMapKeyValueStoreTest.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+        if (path == null)
+            return ".";
+        return new File(path).getParentFile().getParentFile() + "/src/test/resources";
+    }
+
     @Before
     public void before() throws IOException {
         YamlLogging.setAll(false);
@@ -88,7 +116,9 @@ public class ReplicationTestBootstrappingAfterLostConnection {
         exceptions.clear();
         threadDump = new ThreadDump();
         threadDump.ignore("tree-1/Heartbeat");
+        threadDump.ignore("tree-1/disk-space-checker");
         threadDump.ignore("tree-2/Heartbeat");
+        threadDump.ignore("tree-2/disk-space-checker");
         threadDump.ignore("process reaper");
         threadDump.ignore("tree-1/closer");
         threadDump.ignore("main/ChronicleMapKeyValueStore Closer");
@@ -127,35 +157,6 @@ public class ReplicationTestBootstrappingAfterLostConnection {
         TCPRegistry.reset();
 
         threadDump.assertNoNewThreads();
-    }
-
-    @NotNull
-    private static AssetTree create(final int hostId, WireType wireType, final String
-            clusterName) {
-        @NotNull AssetTree tree = new VanillaAssetTree((byte) hostId)
-                .forTesting(false)
-                .withConfig(resourcesDir() + "/cmkvst", OS.TARGET + "/" + hostId);
-
-        tree.root().addWrappingRule(MapView.class, "map directly to KeyValueStore",
-                VanillaMapView::new,
-                KeyValueStore.class);
-        tree.root().addLeafRule(EngineReplication.class, "Engine replication holder",
-                CMap2EngineReplicator::new);
-        tree.root().addLeafRule(KeyValueStore.class, "KVS is Chronicle Map", (context, asset) ->
-                new ChronicleMapKeyValueStore(context.wireType(wireType).cluster(clusterName),
-                        asset));
-
-        //  VanillaAssetTreeEgMain.registerTextViewofTree("host " + hostId, tree);
-
-        return tree;
-    }
-
-    @NotNull
-    public static String resourcesDir() {
-        String path = ChronicleMapKeyValueStoreTest.class.getProtectionDomain().getCodeSource().getLocation().getPath();
-        if (path == null)
-            return ".";
-        return new File(path).getParentFile().getParentFile() + "/src/test/resources";
     }
 
     @Test

@@ -69,6 +69,14 @@ public class ReplicationDoubleMap2WayTest {
     public String name;
     private ThreadDump threadDump;
 
+    @NotNull
+    public static String resourcesDir() {
+        String path = ChronicleMapKeyValueStoreTest.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+        if (path == null)
+            return ".";
+        return new File(path).getParentFile().getParentFile() + "/src/test/resources";
+    }
+
     @Before
     public void before() throws IOException {
         exceptions = Jvm.recordExceptions();
@@ -99,6 +107,7 @@ public class ReplicationDoubleMap2WayTest {
 
     @After
     public void after() {
+        ThreadMonitoringTest.filterExceptions(exceptions);
         if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();
@@ -143,14 +152,6 @@ public class ReplicationDoubleMap2WayTest {
         //  VanillaAssetTreeEgMain.registerTextViewofTree("host " + hostId, tree);
 
         return tree;
-    }
-
-    @NotNull
-    public static String resourcesDir() {
-        String path = ChronicleMapKeyValueStoreTest.class.getProtectionDomain().getCodeSource().getLocation().getPath();
-        if (path == null)
-            return ".";
-        return new File(path).getParentFile().getParentFile() + "/src/test/resources";
     }
 
     @Before

@@ -109,7 +109,6 @@ public interface AssetTree extends Closeable {
         return acquireView(requestContext(uri).view("pub").elementType(eClass));
     }
 
-
     /**
      * Acquire a publisher to a single URI.
      *
@@ -136,7 +135,6 @@ public interface AssetTree extends Closeable {
     default <E> Reference<E> acquireReference(@NotNull String uri, Class<E> eClass) throws AssetNotFoundException {
         return acquireView(requestContext(uri).view("ref").type(eClass));
     }
-
 
     /**
      * Acquire a Topic Publisher view for a URI. A Topic Publisher can publish to any topic in a
@@ -278,7 +276,7 @@ public interface AssetTree extends Closeable {
     @NotNull
     default SubscriptionCollection acquireSubscription(@NotNull RequestContext requestContext) throws AssetNotFoundException {
         @NotNull Asset asset = acquireAsset(requestContext.fullName());
-        @NotNull Class<SubscriptionCollection> subscriptionType = requestContext.getSubscriptionType();
+        @NotNull Class<? extends SubscriptionCollection> subscriptionType = requestContext.getSubscriptionType();
         requestContext.viewType(subscriptionType);
         return asset.acquireView(subscriptionType, requestContext);
     }
@@ -325,7 +323,7 @@ public interface AssetTree extends Closeable {
     @Nullable
     default SubscriptionCollection getSubscription(@NotNull RequestContext requestContext) {
         @Nullable Asset asset = getAsset(requestContext.fullName());
-        @NotNull Class<SubscriptionCollection> subscriptionType = requestContext.getSubscriptionType();
+        @NotNull Class<? extends SubscriptionCollection> subscriptionType = requestContext.getSubscriptionType();
         requestContext.viewType(subscriptionType);
         return asset == null ? null : asset.getView(subscriptionType);
     }

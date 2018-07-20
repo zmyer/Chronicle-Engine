@@ -18,12 +18,10 @@
 package net.openhft.chronicle.engine.server.internal;
 
 import net.openhft.chronicle.engine.cfg.UserStat;
-import net.openhft.chronicle.engine.tree.HostIdentifier;
 import net.openhft.chronicle.network.ClientClosedProvider;
 import net.openhft.chronicle.network.SessionMode;
 import net.openhft.chronicle.network.api.session.SessionDetailsProvider;
 import net.openhft.chronicle.network.connection.CoreFields;
-import net.openhft.chronicle.network.connection.WireOutPublisher;
 import net.openhft.chronicle.wire.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -33,7 +31,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 import static net.openhft.chronicle.engine.server.internal.SystemHandler.EventId.heartbeat;
 import static net.openhft.chronicle.engine.server.internal.SystemHandler.EventId.onClientClosing;
@@ -44,7 +41,7 @@ import static net.openhft.chronicle.engine.server.internal.SystemHandler.EventId
 public class SystemHandler extends AbstractHandler implements ClientClosedProvider {
     private final StringBuilder eventName = new StringBuilder();
     private SessionDetailsProvider sessionDetails;
-    private final WireParser<Void> wireParser = wireParser();
+    private final WireParser wireParser = wireParser();
     @Nullable
     private Map<String, UserStat> monitoringMap;
     private volatile boolean hasClientClosed;
@@ -65,7 +62,7 @@ public class SystemHandler extends AbstractHandler implements ClientClosedProvid
                 }
 
                 while (inWire.bytes().readRemaining() > 0)
-                    wireParser.parseOne(inWire, null);
+                    wireParser.parseOne(inWire);
 
                 return;
             }
@@ -105,10 +102,8 @@ public class SystemHandler extends AbstractHandler implements ClientClosedProvid
                  @NotNull final WireOut outWire, final long tid,
                  @NotNull final SessionDetailsProvider sessionDetails,
                  @Nullable Map<String, UserStat> monitoringMap,
-                 boolean isServerSocket,
-                 @Nullable Supplier<WireOutPublisher> publisher,
-                 @Nullable final HostIdentifier hostId,
-                 @NotNull Consumer<WireType> onWireType, @Nullable WireType wireType0) {
+                 @NotNull Consumer<WireType> onWireType,
+                 @Nullable WireType wireType0) {
 
         this.wasHeartBeat = false;
         this.sessionDetails = sessionDetails;
@@ -118,30 +113,22 @@ public class SystemHandler extends AbstractHandler implements ClientClosedProvid
 
         if (wireType0 == null && sessionDetails.wireType() != null)
             onWireType.accept(sessionDetails.wireType());
-/*
-        if (isServerSocket && sessionDetails.hostId() != 0) {
-            final VanillaSessionDetails sd = new VanillaSessionDetails();
-
-            sd.hostId(hostId.hostId());
-            sd.wireType(sessionDetails.wireType());
-            publisher.get().put(null, w -> w.writeDocument(false, sd));
-        }*/
     }
 
     @NotNull
-    private WireParser<Void> wireParser() {
-        @NotNull final WireParser<Void> parser = new VanillaWireParser<>((s, v, $) -> {
-        });
-        parser.register(EventId.domain::toString, (s, v, $) -> v.text(this, (o, x) -> o.sessionDetails.domain(x)));
-        parser.register(EventId.sessionMode::toString, (s, v, $) -> v.text(this, (o, x) -> o
+    private WireParser wireParser() {
+        @NotNull final WireParser parser = new VanillaWireParser((s, in) -> {
+        }, VanillaWireParser.SKIP_READABLE_BYTES);
+        parser.register(EventId.domain::toString, (s, v) -> v.text(this, (o, x) -> o.sessionDetails.domain(x)));
+        parser.register(EventId.sessionMode::toString, (s, v) -> v.text(this, (o, x) -> o
                 .sessionDetails.sessionMode(SessionMode.valueOf(x))));
-        parser.register(EventId.securityToken::toString, (s, v, $) -> v.text(this, (o, x) -> o
+        parser.register(EventId.securityToken::toString, (s, v) -> v.text(this, (o, x) -> o
                 .sessionDetails.securityToken(x)));
-        parser.register(EventId.clientId::toString, (s, v, $) -> v.text(this, (o, x) -> o
+        parser.register(EventId.clientId::toString, (s, v) -> v.text(this, (o, x) -> o
                 .sessionDetails.clientId(UUID.fromString(x))));
-        parser.register(EventId.wireType::toString, (s, v, $) -> v.text(this, (o, x) -> o
+        parser.register(EventId.wireType::toString, (s, v) -> v.text(this, (o, x) -> o
                 .sessionDetails.wireType(WireType.valueOf(x))));
-        parser.register(EventId.hostId::toString, (s, v, $) -> v.int8(this, (o, x) -> o
+        parser.register(EventId.hostId::toString, (s, v) -> v.int8(this, (o, x) -> o
                 .sessionDetails.hostId(x)));
         return parser;
     }

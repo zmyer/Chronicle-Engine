@@ -74,6 +74,18 @@ public class RoundTripTest {
     private Map<ExceptionKey, Integer> exceptions;
 
     @NotNull
+    public static String getKey(int i) {
+        return "" + i;
+    }
+
+    @NotNull
+    public static String generateValue(char c, int size) {
+        @NotNull char[] chars = new char[size - 7];
+        Arrays.fill(chars, c);
+        return counter++ + " " + new String(chars);
+    }
+
+    @NotNull
     AssetTree create(final int hostId, WireType writeType, @NotNull final List<EngineHostDetails> hostDetails) {
 
         @NotNull AssetTree tree = hooks.addCloseable(new VanillaAssetTree((byte) hostId)
@@ -107,18 +119,6 @@ public class RoundTripTest {
         return tree;
     }
 
-    @NotNull
-    public static String getKey(int i) {
-        return "" + i;
-    }
-
-    @NotNull
-    public static String generateValue(char c, int size) {
-        @NotNull char[] chars = new char[size - 7];
-        Arrays.fill(chars, c);
-        return counter++ + " " + new String(chars);
-    }
-
     @Before
     public void threadDump() {
         threadDump = new ThreadDump();
@@ -135,6 +135,7 @@ public class RoundTripTest {
     }
 
     private void checkForThrowablesInOtherThreads() {
+        ThreadMonitoringTest.filterExceptions(exceptions);
         if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();

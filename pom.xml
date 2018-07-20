@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright 2016 higherfrequencytrading.com
+  ~ Copyright 2016 chronicle.software
   ~
   ~ Licensed under the *Apache License, Version 2.0* (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@
     <groupId>net.openhft</groupId>
     <modelVersion>4.0.0</modelVersion>
     <artifactId>chronicle-engine</artifactId>
-    <version>1.14.23-SNAPSHOT</version>
+    <version>1.16.0-SNAPSHOT</version>
     <name>OpenHFT/Chronicle-Engine</name>
     <description>Chronicle Engine Framework</description>
     <packaging>bundle</packaging>
@@ -48,22 +48,25 @@
             <dependency>
                 <groupId>net.openhft</groupId>
                 <artifactId>chronicle-bom</artifactId>
-                <version>1.15.102</version>
+                <version>1.16-SNAPSHOT</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
 
             <!-- forces engine to use an older version of map, until it has been updated -->
             <dependency>
                 <groupId>net.openhft</groupId>
                 <artifactId>chronicle-map</artifactId>
                 <version>2.4.17</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>net.openhft</groupId>
+                        <artifactId>chronicle-network</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
-
         </dependencies>
     </dependencyManagement>
-
 
     <repositories>
         <repository>
@@ -120,7 +123,6 @@
             </exclusions>
 
         </dependency>
-
 
         <dependency>
             <groupId>net.openhft</groupId>

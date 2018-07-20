@@ -77,7 +77,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         Closeable {
 
     private static final Logger LOG = LoggerFactory.getLogger(ChronicleQueueView.class);
-
+    private static final StringBuilderPool SBP = new StringBuilderPool();
     @NotNull
     private final RollingChronicleQueue chronicleQueue;
     private final Class<T> messageTypeClass;
@@ -94,7 +94,6 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
     private boolean isSource;
     private boolean isReplicating;
     private boolean dontPersist;
-    private static final StringBuilderPool SBP = new StringBuilderPool();
     @NotNull
     private QueueConfig queueConfig;
 
@@ -229,7 +228,8 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
             Files.deleteIfExists(element.toPath());
 
         } catch (IOException e) {
-            Jvm.debug().on(ChronicleQueueView.class, "Unable to delete " + element, e);
+            if (Jvm.isDebugEnabled(ChronicleQueueView.class))
+                Jvm.debug().on(ChronicleQueueView.class, "Unable to delete " + element, e);
         }
     }
 
@@ -285,7 +285,8 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
 
         if (clusters == null) {
             LOG.warn("no cluster found name=" + context.cluster());
-            Jvm.debug().on(getClass(), "no cluster found name=" + context.cluster());
+            if (Jvm.isDebugEnabled(getClass()))
+                Jvm.debug().on(getClass(), "no cluster found name=" + context.cluster());
             return;
         }
 
@@ -293,7 +294,8 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         @NotNull final String csp = context.fullName();
 
         if (engineCluster == null) {
-            Jvm.debug().on(getClass(), "no cluster found name=" + context.cluster());
+            if (Jvm.isDebugEnabled(getClass()))
+                Jvm.debug().on(getClass(), "no cluster found name=" + context.cluster());
             LOG.warn("no cluster found name=" + context.cluster());
             return;
         }
@@ -316,7 +318,6 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
 
                 if (remoteIdentifier == localIdentifier)
                     continue;
-
 
                 ConnectionManager connectionManager = engineCluster.findConnectionManager(remoteIdentifier);
                 if (connectionManager == null) {
@@ -697,7 +698,8 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
                 deleteFiles(file);
 
             } catch (Exception e) {
-                Jvm.debug().on(getClass(), "Unable to delete " + file, e);
+                if (Jvm.isDebugEnabled(getClass()))
+                    Jvm.debug().on(getClass(), "Unable to delete " + file, e);
             }
         }
     }
@@ -903,7 +905,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
 
         @Override
         public void set(K key, @NotNull V value) {
-            queueView.publishAndIndex((K) key, value);
+            queueView.publishAndIndex(key, value);
             super.put(key, value);
         }
 
@@ -939,7 +941,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
             checkValue(value);
             @Nullable V v = super.putIfAbsent(key, value);
             if (v != null)
-                queueView.publishAndIndex((K) key, value);
+                queueView.publishAndIndex(key, value);
             return v;
         }
 
@@ -958,7 +960,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
             if (!super.replace(key, oldValue, newValue))
                 return false;
 
-            queueView.publishAndIndex((K) key, newValue);
+            queueView.publishAndIndex(key, newValue);
             return true;
         }
 
@@ -967,7 +969,7 @@ public class ChronicleQueueView<T, M> implements QueueView<T, M>, MapView<T, M>,
         public V replace(@net.openhft.chronicle.core.annotation.NotNull K key,
                          @net.openhft.chronicle.core.annotation.NotNull V value) {
             @Nullable V replaced = super.replace(key, value);
-            queueView.publishAndIndex((K) key, value);
+            queueView.publishAndIndex(key, value);
             return replaced;
         }
 

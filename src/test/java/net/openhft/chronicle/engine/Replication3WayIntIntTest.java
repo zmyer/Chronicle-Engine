@@ -54,7 +54,7 @@ import java.util.concurrent.ConcurrentMap;
 import static org.junit.Assert.assertNotNull;
 
 @RunWith(value = Parameterized.class)
-public class  Replication3WayIntIntTest extends ThreadMonitoringTest {
+public class Replication3WayIntIntTest extends ThreadMonitoringTest {
     public static final WireType WIRE_TYPE = WireType.TEXT;
     public static final int NUMBER_OF_TIMES = 10;
 
@@ -128,6 +128,7 @@ public class  Replication3WayIntIntTest extends ThreadMonitoringTest {
         Closeable.closeQuietly(tree1);
         Closeable.closeQuietly(tree2);
         Closeable.closeQuietly(tree3);
+        ThreadMonitoringTest.filterExceptions(exceptions);
         if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             // TODO FIX

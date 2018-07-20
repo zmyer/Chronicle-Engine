@@ -1,5 +1,6 @@
 package net.openhft.chronicle.engine.cfg;
 
+import net.openhft.chronicle.core.annotation.UsedViaReflection;
 import net.openhft.chronicle.engine.api.tree.Asset;
 import net.openhft.chronicle.engine.api.tree.AssetTree;
 import net.openhft.chronicle.engine.api.tree.RequestContext;
@@ -18,7 +19,7 @@ import static net.openhft.chronicle.engine.api.tree.RequestContext.requestContex
 
 /**
  * @author Rob Austin.
- *         Configures a Chronicle Queue
+ * Configures a Chronicle Queue
  */
 public class QueueCfg extends AbstractMarshallableCfg implements Installable {
 
@@ -29,6 +30,7 @@ public class QueueCfg extends AbstractMarshallableCfg implements Installable {
     private Class topicClass = String.class;
     @NotNull
     private Class messageClass = String.class;
+    @UsedViaReflection
     private boolean acknowledgment = false;
     @Nullable
     private MessageAdaptor messageAdaptor = null;

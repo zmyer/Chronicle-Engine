@@ -44,14 +44,11 @@ import static net.openhft.chronicle.core.util.ObjectUtils.convertTo;
  * Created by Peter Lawrey on 22/05/15.
  */
 public class RemoteMapView<K, MV, V> extends VanillaMapView<K, V> {
-    @org.jetbrains.annotations.NotNull
-    private final RequestContext context;
 
     public RemoteMapView(@org.jetbrains.annotations.NotNull @NotNull RequestContext context,
                          @org.jetbrains.annotations.NotNull @NotNull Asset asset,
                          @org.jetbrains.annotations.NotNull @NotNull KeyValueStore<K, V> kvStore) {
         super(context, asset, kvStore);
-        this.context = context;
     }
 
     @Override
@@ -174,22 +171,22 @@ public class RemoteMapView<K, MV, V> extends VanillaMapView<K, V> {
     @Override
     public <A, R> R applyTo(@NotNull SerializableBiFunction<MapView<K, V>, A, R> function, A arg) {
         @Nullable RemoteKeyValueStore<K, V> store = (RemoteKeyValueStore<K, V>) underlying();
-        return store.applyTo((SerializableBiFunction<MapView<K, V>, A, R>) (SerializableBiFunction) function, arg);
+        return store.applyTo(function, arg);
     }
 
     @Override
     public <A> void asyncUpdate(@NotNull SerializableUpdaterWithArg<MapView<K, V>, A> updateFunction, A arg) {
         @org.jetbrains.annotations.NotNull RemoteKeyValueStore<K, V> store = (RemoteKeyValueStore<K, V>) underlying();
-        store.asyncUpdate((SerializableUpdaterWithArg) updateFunction, arg);
+        store.asyncUpdate(updateFunction, arg);
     }
 
     @Nullable
     @Override
     public <UA, RA, R> R syncUpdate(@NotNull SerializableUpdaterWithArg<MapView<K, V>, UA>
                                             updateFunction, UA ua, @NotNull
-                                    SerializableBiFunction<MapView<K, V>, RA, R> returnFunction, RA ra) {
+                                            SerializableBiFunction<MapView<K, V>, RA, R> returnFunction, RA ra) {
         @org.jetbrains.annotations.NotNull RemoteKeyValueStore<K, V> store = (RemoteKeyValueStore<K, V>) underlying();
-        return store.syncUpdate((SerializableUpdaterWithArg) updateFunction, ua, (SerializableBiFunction) returnFunction, ra);
+        return store.syncUpdate(updateFunction, ua, returnFunction, ra);
     }
 
     // helper functions.
@@ -209,7 +206,7 @@ public class RemoteMapView<K, MV, V> extends VanillaMapView<K, V> {
     @Nullable
     @Override
     public <R> R syncUpdate(@NotNull SerializableUpdater<MapView<K, V>> updateFunction, @NotNull
-    SerializableFunction<MapView<K, V>, R> returnFunction) {
+            SerializableFunction<MapView<K, V>, R> returnFunction) {
         // TODO CE-95 handle this natively.
         return syncUpdate((x, $) -> updateFunction.accept(x), null, (x, $) -> returnFunction.apply(x), null);
     }
@@ -250,7 +247,7 @@ public class RemoteMapView<K, MV, V> extends VanillaMapView<K, V> {
     @Nullable
     @Override
     public <R> R syncUpdateKey(K key, @NotNull
-    SerializableFunction<V, V> updateFunction, @NotNull SerializableFunction<V, R>
+            SerializableFunction<V, V> updateFunction, @NotNull SerializableFunction<V, R>
                                        returnFunction) {
         checkKey(key);
         // TODO CE-95 handle this natively.

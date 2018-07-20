@@ -315,7 +315,7 @@ public interface Asset extends Closeable {
      * adding rules.
      *
      * @param viewType to associate this implementation with.
-     * @param view the implementation of a view
+     * @param view     the implementation of a view
      * @return the view provided.
      */
     <V> V addView(Class<V> viewType, V view);
@@ -353,7 +353,7 @@ public interface Asset extends Closeable {
      *
      * @param consumer to accept each child.
      * @throws T to throw if the accept is no longer interested in getting
-     *                                    more children.
+     *           more children.
      */
     <T extends Throwable> void forEachChild(ThrowingConsumer<Asset, T> consumer) throws T;
 
@@ -363,7 +363,7 @@ public interface Asset extends Closeable {
             @NotNull RequestContext requestContext,
             @NotNull Subscriber<Object> subscriber) {
 
-        @NotNull final Class<SubscriptionCollection> subscriptionType = requestContext.getSubscriptionType();
+        @NotNull final Class<? extends SubscriptionCollection> subscriptionType = requestContext.getSubscriptionType();
         @Nullable final SubscriptionCollection subscription = getView(subscriptionType);
 
         if (subscription == null)
@@ -406,11 +406,10 @@ public interface Asset extends Closeable {
 
     @NotNull
     default SubscriptionCollection acquireSubscription(@NotNull RequestContext requestContext) {
-        @NotNull Class<SubscriptionCollection> subscriptionType = requestContext.getSubscriptionType();
+        @NotNull Class<? extends SubscriptionCollection> subscriptionType = requestContext.getSubscriptionType();
         requestContext.viewType(subscriptionType);
         return acquireView(subscriptionType, requestContext);
     }
-
 
     /**
      * @return the current view types that are available at this asset.
@@ -419,7 +418,6 @@ public interface Asset extends Closeable {
     default Set<Class> viewTypes() {
         return Collections.emptySet();
     }
-
 
     @NotNull
     default <K, V> MapView<K, V> acquireMap(@NotNull String uri, Class<K> kClass, Class<V> vClass, String cluster) throws AssetNotFoundException {

@@ -29,6 +29,7 @@ import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.io.IORuntimeException;
 import net.openhft.chronicle.core.onoes.ExceptionKey;
 import net.openhft.chronicle.engine.ShutdownHooks;
+import net.openhft.chronicle.engine.ThreadMonitoringTest;
 import net.openhft.chronicle.engine.api.tree.AssetTree;
 import net.openhft.chronicle.engine.map.MapClientTest.LocalMapSupplier;
 import net.openhft.chronicle.engine.map.MapClientTest.RemoteMapSupplier;
@@ -52,9 +53,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 
-import static com.google.common.collect.testing.features.MapFeature.GENERAL_PURPOSE;
-import static com.google.common.collect.testing.features.MapFeature.RESTRICTS_KEYS;
-import static com.google.common.collect.testing.features.MapFeature.RESTRICTS_VALUES;
+import static com.google.common.collect.testing.features.MapFeature.*;
 
 @SuppressWarnings("all")
 
@@ -68,8 +67,9 @@ public class GuavaEngineTest {
     @NotNull
     public static Test suite() throws IOException {
 
-        MapTestSuiteBuilder using = MapTestSuiteBuilder.using(new RemoteTestGenerator(
-                HOOKS.addCloseable(new VanillaAssetTree().forTesting())));
+        MapTestSuiteBuilder using = MapTestSuiteBuilder.using(
+                HOOKS.addCloseable(new RemoteTestGenerator(
+                        HOOKS.addCloseable(new VanillaAssetTree().forTesting()))));
 
         TestSuite remoteMapTests = using.named("Chronicle RemoteEngine Guava tests")
                 .withFeatures(GENERAL_PURPOSE)
@@ -131,7 +131,7 @@ public class GuavaEngineTest {
         HOOKS.close();
         TcpChannelHub.closeAllHubs();
         TCPRegistry.reset();
-
+        ThreadMonitoringTest.filterExceptions(exceptions);
         if (Jvm.hasException(exceptions)) {
             Jvm.dumpException(exceptions);
             Jvm.resetExceptionHandlers();
@@ -209,11 +209,13 @@ public class GuavaEngineTest {
         private final AssetTree remoteAssetTree;
         @NotNull
         private final AssetTree assetTree;
+        private @NotNull
+        final ServerEndpoint serverEndpoint;
 
         public RemoteTestGenerator(@NotNull AssetTree assetTree) throws IOException {
             this.assetTree = assetTree;
             TCPRegistry.createServerSocketChannelFor("guava.test.host.port");
-            @NotNull final ServerEndpoint serverEndpoint = new ServerEndpoint("guava.test.host.port", assetTree, "cluster");
+            serverEndpoint = new ServerEndpoint("guava.test.host.port", assetTree, "cluster");
 
             @NotNull final String hostname = "localhost";
             this.remoteAssetTree = new VanillaAssetTree().forRemoteAccess("guava.test" +
@@ -228,10 +230,11 @@ public class GuavaEngineTest {
 
         @Override
         public void close() throws IOException {
+            serverEndpoint.close();
             assetTree.close();
             remoteAssetTree.close();
-            TcpChannelHub.closeAllHubs();
-            TCPRegistry.reset();
+//            TcpChannelHub.closeAllHubs();
+//            TCPRegistry.reset();
         }
     }
 

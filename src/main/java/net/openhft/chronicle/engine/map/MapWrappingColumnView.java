@@ -44,7 +44,6 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
         valueMap = Map.class.isAssignableFrom(mapView.valueType());
     }
 
-
     @Override
     public void registerChangeListener(@NotNull Runnable r) {
         mapView.registerSubscriber(o -> r.run());
@@ -168,7 +167,6 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
             }
         };
 
-
         long x = 0;
         while (x++ < sortedFilter.fromIndex && result.hasNext()) {
             result.next();
@@ -180,7 +178,7 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
     @Override
     public boolean containsRowWithKey(@NotNull List keys) {
         assert keys.size() == 1;
-        return mapView.containsKey((K) keys.get(0));
+        return mapView.containsKey(keys.get(0));
     }
 
     @Nullable
@@ -197,7 +195,6 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
     @NotNull
     @Override
     public List<Column> columns() {
-
 
         @NotNull List<Column> result = new ArrayList<>();
 
@@ -263,7 +260,6 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
         return !requestContext.toUri().startsWith("/proc");
     }
 
-
     @Override
     public int changedRow(@NotNull Map<String, Object> row, @NotNull Map<String, Object> oldRow) {
 
@@ -280,7 +276,7 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
         final Object newKey = row.get("key");
 
         if (oldKey != null && !oldKey.equals(newKey))
-            mapView.remove((K) oldKey);
+            mapView.remove(oldKey);
 
         final Class<V> valueType = mapView.valueType();
         if (!Marshallable.class.isAssignableFrom(valueType)) {
@@ -370,7 +366,6 @@ public class MapWrappingColumnView<K, V> implements MapColumnView {
             }
         };
     }
-
 
     /**
      * @param sortedFilter if {@code sortedFilter} == null or empty all the total number of rows is
